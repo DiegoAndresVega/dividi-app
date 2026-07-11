@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'screens/groups_screen.dart';
 import 'screens/login_screen.dart';
 import 'services/api_client.dart';
+import 'theme/dividi_theme.dart';
+import 'widgets/dividi_logo.dart';
 
 void main() {
   runApp(const MyApp());
@@ -14,8 +16,10 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Dividi',
-      theme: ThemeData(colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal)),
+      title: 'dividi',
+      theme: DividiTheme.claro(),
+      darkTheme: DividiTheme.oscuro(),
+      themeMode: ThemeMode.system,
       home: const StartupScreen(),
     );
   }
@@ -51,6 +55,24 @@ class _StartupScreenState extends State<StartupScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    return Scaffold(
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const DividiLogo(size: 96),
+            const SizedBox(height: 28),
+            SizedBox(
+              width: 22,
+              height: 22,
+              child: CircularProgressIndicator(
+                strokeWidth: 2.5,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

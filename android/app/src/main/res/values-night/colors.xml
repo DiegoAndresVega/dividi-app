@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Identidad Dividi: fondo de arranque en modo noche -->
+    <color name="dividi_arranque">#141A21</color>
+</resources>

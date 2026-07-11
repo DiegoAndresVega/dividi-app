@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../services/api_client.dart';
+import '../theme/dividi_theme.dart';
+import '../widgets/add_member_dialog.dart';
+import '../widgets/dividi_bits.dart';
 
 /// Formulario de gasto: sirve para crear (expense == null) y para editar.
 ///
@@ -26,6 +29,10 @@ class ExpenseFormScreen extends StatefulWidget {
 class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
   final _apiClient = ApiClient();
 
+  /// Copia local de los miembros: puede crecer si se añade un participante
+  /// nuevo al grupo desde este mismo formulario.
+  late final List<dynamic> _members = List.of(widget.members);
+
   final _descriptionController = TextEditingController();
   final _amountController = TextEditingController();
   String _category = 'otros';
@@ -50,15 +57,15 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
   @override
   void initState() {
     super.initState();
-    for (final member in widget.members) {
+    for (final member in _members) {
       _percentControllers[member['id']] = TextEditingController();
     }
 
     final expense = widget.expense;
     if (expense == null) {
       // por defecto: participan todos y paga el primero
-      _selected.addAll(widget.members.map((m) => m['id'] as String));
-      _paidById = widget.members.isNotEmpty ? widget.members.first['id'] : null;
+      _selected.addAll(_members.map((m) => m['id'] as String));
+      _paidById = _members.isNotEmpty ? _members.first['id'] : null;
     } else {
       _descriptionController.text = expense['description'];
       _amountController.text = expense['amount'].toString();
@@ -166,6 +173,24 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
     }).toList();
   }
 
+  /// Añade un miembro nuevo al grupo sin salir del formulario y lo deja
+  /// ya seleccionado como participante del gasto.
+  Future<void> _addParticipant() async {
+    final created = await showAddMemberDialog(
+      context: context,
+      apiClient: _apiClient,
+      groupId: widget.groupId,
+      members: _members,
+    );
+    if (created == null || !mounted) return;
+    setState(() {
+      _members.add(created);
+      _percentControllers[created['id']] = TextEditingController();
+      _selected.add(created['id'] as String);
+      _recomputeAutoPercentages();
+    });
+  }
+
   Future<void> _save() async {
     final error = _validate();
     if (error != null) {
@@ -220,7 +245,11 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
             child: const Text('Cancelar'),
           ),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            style: FilledButton.styleFrom(
+              backgroundColor: DividiColors.rojo,
+              foregroundColor: Colors.white,
+              minimumSize: const Size(64, 48),
+            ),
             onPressed: () => Navigator.of(context).pop(true),
             child: const Text('Eliminar'),
           ),
@@ -259,42 +288,71 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
         ],
       ),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
         children: [
           TextField(
             controller: _descriptionController,
             decoration: const InputDecoration(labelText: 'Descripción'),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 14),
           TextField(
             controller: _amountController,
             decoration: const InputDecoration(labelText: 'Importe (€)'),
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            style: const TextStyle(
+              fontFamily: DividiTheme.familiaTitulares,
+              fontWeight: FontWeight.w800,
+              fontSize: 26,
+              fontFeatures: [FontFeature.tabularFigures()],
+            ),
           ),
-          const SizedBox(height: 12),
-          DropdownButtonFormField<String>(
-            initialValue: _category,
-            decoration: const InputDecoration(labelText: 'Categoría'),
-            items: _categories
-                .map((c) => DropdownMenuItem(value: c, child: Text(c)))
-                .toList(),
-            onChanged: (value) => setState(() => _category = value ?? 'otros'),
+          const SizedBox(height: 20),
+          const EtiquetaSeccion('Categoría'),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: _categories.map((c) {
+              final estilo = DividiTones.of(context).categoria(c);
+              final seleccionada = _category == c;
+              return ChoiceChip(
+                avatar: Icon(
+                  estilo.icono,
+                  size: 18,
+                  color: seleccionada
+                      ? Theme.of(context).colorScheme.onPrimary
+                      : estilo.color,
+                ),
+                label: Text(estilo.etiqueta),
+                selected: seleccionada,
+                showCheckmark: false,
+                onSelected: (_) => setState(() => _category = c),
+              );
+            }).toList(),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 20),
           DropdownButtonFormField<String>(
             initialValue: _paidById,
             decoration: const InputDecoration(labelText: 'Pagado por'),
-            items: widget.members
+            borderRadius: BorderRadius.circular(14),
+            items: _members
                 .map<DropdownMenuItem<String>>((m) => DropdownMenuItem(
                       value: m['id'] as String,
-                      child: Text(m['display_name']),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          PersonaAvatar(nombre: m['display_name'], size: 26),
+                          const SizedBox(width: 10),
+                          Text(m['display_name']),
+                        ],
+                      ),
                     ))
                 .toList(),
             onChanged: (value) => setState(() => _paidById = value),
           ),
-          const SizedBox(height: 20),
-          Text('Método de reparto', style: Theme.of(context).textTheme.titleSmall),
-          const SizedBox(height: 8),
+          const SizedBox(height: 24),
+          const EtiquetaSeccion('¿Cómo se divide?'),
+          const SizedBox(height: 10),
           SegmentedButton<String>(
             segments: const [
               ButtonSegment(value: 'equal', label: Text('Partes iguales')),
@@ -307,25 +365,37 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
             }),
           ),
           if (_splitMethod == 'percentage')
-            const Padding(
-              padding: EdgeInsets.only(top: 8),
+            Padding(
+              padding: const EdgeInsets.only(top: 10),
               child: Text(
                 'Los campos que no toques se rellenan solos hasta sumar 100. '
                 'Borra un campo para que vuelva a calcularse automáticamente.',
-                style: TextStyle(fontSize: 12, color: Colors.grey),
+                style: Theme.of(context).textTheme.bodySmall,
               ),
             ),
-          const SizedBox(height: 16),
-          Text('¿Quiénes participan?', style: Theme.of(context).textTheme.titleSmall),
-          const SizedBox(height: 4),
-          ...widget.members.map((member) {
+          const SizedBox(height: 24),
+          const EtiquetaSeccion('¿Quiénes participan?'),
+          const SizedBox(height: 6),
+          ..._members.map((member) {
             final memberId = member['id'] as String;
             final isSelected = _selected.contains(memberId);
             return Column(
               children: [
                 CheckboxListTile(
                   value: isSelected,
-                  title: Text(member['display_name']),
+                  title: Row(
+                    children: [
+                      PersonaAvatar(nombre: member['display_name'], size: 30),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          member['display_name'],
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
                   contentPadding: EdgeInsets.zero,
                   controlAffinity: ListTileControlAffinity.leading,
                   onChanged: (checked) => setState(() {
@@ -367,24 +437,52 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
               ],
             );
           }),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: _saving ? null : _addParticipant,
+              icon: const Icon(Icons.person_add_outlined),
+              label: const Text('Añadir participante nuevo al grupo'),
+            ),
+          ),
           if (_splitMethod == 'percentage')
             Padding(
-              padding: const EdgeInsets.only(top: 4),
-              child: Text(
-                'Suma: ${_percentSum.toStringAsFixed(2)} / 100',
-                style: TextStyle(
-                  color: (_percentSum - 100).abs() < 0.001 ? Colors.green : Colors.red,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
+              padding: const EdgeInsets.only(top: 8),
+              child: Builder(builder: (context) {
+                final tonos = DividiTones.of(context);
+                final cuadra = (_percentSum - 100).abs() < 0.001;
+                return Align(
+                  alignment: Alignment.centerLeft,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: cuadra ? tonos.positivoFondo : tonos.negativoFondo,
+                      borderRadius: BorderRadius.circular(99),
+                    ),
+                    child: Text(
+                      'Suma: ${_percentSum.toStringAsFixed(2)} / 100',
+                      style: TextStyle(
+                        fontFamily: DividiTheme.familiaTitulares,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14,
+                        color: cuadra ? tonos.positivo : tonos.negativo,
+                        fontFeatures: const [FontFeature.tabularFigures()],
+                      ),
+                    ),
+                  ),
+                );
+              }),
             ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 28),
           FilledButton(
             onPressed: _saving ? null : _save,
             child: _saving
                 ? const SizedBox(
-                    width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                : Text(_isEditing ? 'Guardar cambios' : 'Crear gasto'),
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(strokeWidth: 2.5))
+                : Text(_isEditing ? 'Guardar cambios' : 'Guardar gasto'),
           ),
         ],
       ),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../services/api_client.dart';
+import '../widgets/dividi_bits.dart';
 import 'group_detail_screen.dart';
 import 'login_screen.dart';
 
@@ -82,7 +83,12 @@ class _GroupsScreenState extends State<GroupsScreen> {
       appBar: AppBar(
         title: const Text('Mis grupos'),
         actions: [
-          IconButton(onPressed: _logout, icon: const Icon(Icons.logout)),
+          IconButton(
+            onPressed: _logout,
+            icon: const Icon(Icons.logout_rounded),
+            tooltip: 'Cerrar sesión',
+          ),
+          const SizedBox(width: 8),
         ],
       ),
       body: RefreshIndicator(
@@ -96,8 +102,10 @@ class _GroupsScreenState extends State<GroupsScreen> {
             if (snapshot.hasError) {
               return ListView(
                 children: [
-                  const SizedBox(height: 100),
-                  Center(child: Text('Error: ${snapshot.error}')),
+                  EstadoVacio(
+                    titulo: 'No se pudieron cargar tus grupos',
+                    detalle: '${snapshot.error}',
+                  ),
                 ],
               );
             }
@@ -105,18 +113,23 @@ class _GroupsScreenState extends State<GroupsScreen> {
             if (groups.isEmpty) {
               return ListView(
                 children: const [
-                  SizedBox(height: 100),
-                  Center(child: Text('Todavía no tienes ningún grupo.')),
+                  EstadoVacio(
+                    titulo: 'Todavía no tienes ningún grupo.',
+                    detalle:
+                        'Crea el primero y empieza a repartir gastos sin líos.',
+                  ),
                 ],
               );
             }
-            return ListView.builder(
+            return ListView.separated(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 120),
               itemCount: groups.length,
+              separatorBuilder: (_, _) => const SizedBox(height: 12),
               itemBuilder: (context, index) {
                 final group = groups[index];
-                return ListTile(
-                  title: Text(group['name']),
-                  subtitle: Text(group['default_currency']),
+                return _GrupoCard(
+                  nombre: group['name'],
+                  divisa: group['default_currency'],
                   onTap: () => Navigator.of(context).push(
                     MaterialPageRoute(
                       builder: (_) => GroupDetailScreen(
@@ -131,15 +144,69 @@ class _GroupsScreenState extends State<GroupsScreen> {
           },
         ),
       ),
-      floatingActionButton: FloatingActionButton(
+      floatingActionButton: FloatingActionButton.extended(
         onPressed: _creatingGroup ? null : _createGroup,
-        child: _creatingGroup
+        icon: _creatingGroup
             ? const SizedBox(
                 width: 20,
                 height: 20,
-                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                child: CircularProgressIndicator(strokeWidth: 2.5),
               )
-            : const Icon(Icons.add),
+            : const Icon(Icons.add_rounded),
+        label: const Text('Nuevo grupo'),
+      ),
+    );
+  }
+}
+
+/// Tarjeta de grupo: avatar con inicial (color estable por nombre),
+/// nombre en Gabarito y la divisa como dato secundario.
+class _GrupoCard extends StatelessWidget {
+  final String nombre;
+  final String divisa;
+  final VoidCallback onTap;
+
+  const _GrupoCard({
+    required this.nombre,
+    required this.divisa,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final tema = Theme.of(context);
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          child: Row(
+            children: [
+              PersonaAvatar(nombre: nombre, size: 46),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      nombre,
+                      style: tema.textTheme.titleMedium,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    Text('Divisa: $divisa', style: tema.textTheme.bodySmall),
+                  ],
+                ),
+              ),
+              Icon(
+                Icons.chevron_right_rounded,
+                color: tema.colorScheme.onSurfaceVariant,
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

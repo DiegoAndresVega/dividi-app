@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Óbelo de Dividi en Tinta, centrado en la zona segura del icono adaptativo -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- punto superior -->
+    <path
+        android:fillColor="#212B36"
+        android:pathData="M48.25,37 a5.75,5.75 0 1 0 11.5,0 a5.75,5.75 0 1 0 -11.5,0 Z" />
+    <!-- barra de equilibrio -->
+    <path
+        android:fillColor="#212B36"
+        android:pathData="M36.8,50.2 h34.4 a3.8,3.8 0 0 1 0,7.6 h-34.4 a3.8,3.8 0 0 1 0,-7.6 Z" />
+    <!-- punto inferior -->
+    <path
+        android:fillColor="#212B36"
+        android:pathData="M48.25,71 a5.75,5.75 0 1 0 11.5,0 a5.75,5.75 0 1 0 -11.5,0 Z" />
+</vector>

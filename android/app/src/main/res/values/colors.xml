@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Identidad Dividi -->
+    <color name="dividi_arranque">#F7F6F2</color>   <!-- Porcelana -->
+    <color name="dividi_icono_fondo">#F0A32F</color> <!-- Ámbar -->
+</resources>

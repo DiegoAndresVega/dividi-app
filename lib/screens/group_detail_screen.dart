@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../services/api_client.dart';
+import '../theme/dividi_format.dart';
+import '../theme/dividi_theme.dart';
+import '../widgets/dividi_bits.dart';
 import 'expense_form_screen.dart';
 import 'members_screen.dart';
 
@@ -45,7 +48,7 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
     if (!mounted) return;
     final members = (group['members'] as List<dynamic>);
 
-    final changed = await Navigator.of(context).push<bool>(
+    await Navigator.of(context).push<bool>(
       MaterialPageRoute(
         builder: (_) => ExpenseFormScreen(
           groupId: widget.groupId,
@@ -54,7 +57,9 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
         ),
       ),
     );
-    if (changed == true) await _refresh();
+    // refrescar siempre: aunque el gasto se cancele, pudo añadirse un
+    // participante nuevo al grupo desde el formulario
+    if (mounted) await _refresh();
   }
 
   @override
@@ -80,12 +85,13 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
                 await _refresh();
               },
             ),
+            const SizedBox(width: 8),
           ],
           bottom: const TabBar(
             tabs: [
               Tab(text: 'Gastos'),
               Tab(text: 'Balances'),
-              Tab(text: 'Settle up'),
+              Tab(text: 'Saldar'),
             ],
           ),
         ),
@@ -99,9 +105,10 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
             ],
           ),
         ),
-        floatingActionButton: FloatingActionButton(
+        floatingActionButton: FloatingActionButton.extended(
           onPressed: () => _openExpenseForm(),
-          child: const Icon(Icons.add),
+          icon: const Icon(Icons.add_rounded),
+          label: const Text('Nuevo gasto'),
         ),
       ),
     );
@@ -115,21 +122,78 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
           return const Center(child: CircularProgressIndicator());
         }
         if (snapshot.hasError) {
-          return _errorList('Error: ${snapshot.error}');
+          return ListView(
+            children: [
+              EstadoVacio(
+                titulo: 'No se pudo cargar',
+                detalle: '${snapshot.error}',
+              ),
+            ],
+          );
         }
         final expenses = snapshot.data ?? [];
         if (expenses.isEmpty) {
-          return _errorList('Todavía no hay gastos en este grupo.');
+          return ListView(
+            children: const [
+              EstadoVacio(
+                titulo: 'Todavía no hay gastos en este grupo.',
+                detalle: 'Apunta el primero con el botón «Nuevo gasto».',
+              ),
+            ],
+          );
         }
-        return ListView.builder(
+        return ListView.separated(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 120),
           itemCount: expenses.length,
+          separatorBuilder: (_, _) => const SizedBox(height: 10),
           itemBuilder: (context, index) {
             final expense = expenses[index];
-            return ListTile(
-              title: Text(expense['description']),
-              subtitle: Text('${expense['category']} · ${expense['split_method']}'),
-              trailing: Text('${expense['amount']} ${expense['currency']}'),
-              onTap: () => _openExpenseForm(expense: expense),
+            final tema = Theme.of(context);
+            final categoria =
+                DividiTones.of(context).categoria(expense['category']);
+            return Card(
+              clipBehavior: Clip.antiAlias,
+              child: InkWell(
+                onTap: () => _openExpenseForm(expense: expense),
+                child: Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+                  child: Row(
+                    children: [
+                      CategoriaInsignia(categoria: expense['category']),
+                      const SizedBox(width: 13),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              expense['description'],
+                              style: tema.textTheme.titleSmall,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              '${categoria.etiqueta} · ${etiquetaMetodo(expense['split_method'])}',
+                              style: tema.textTheme.bodySmall,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Text(
+                        formatearImporte(expense['amount'],
+                            divisa: expense['currency']),
+                        style: tema.textTheme.titleMedium?.copyWith(
+                          fontFeatures: const [FontFeature.tabularFigures()],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             );
           },
         );
@@ -145,30 +209,56 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
           return const Center(child: CircularProgressIndicator());
         }
         if (snapshot.hasError) {
-          return _errorList('Error: ${snapshot.error}');
+          return ListView(
+            children: [
+              EstadoVacio(
+                titulo: 'No se pudo cargar',
+                detalle: '${snapshot.error}',
+              ),
+            ],
+          );
         }
         final balances = snapshot.data ?? [];
-        return ListView.builder(
+        return ListView.separated(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 120),
           itemCount: balances.length,
+          separatorBuilder: (_, _) => const SizedBox(height: 10),
           itemBuilder: (context, index) {
             final balance = balances[index];
             final amount = double.tryParse(balance['balance'].toString()) ?? 0;
-            final color = amount > 0
-                ? Colors.green
-                : amount < 0
-                    ? Colors.red
-                    : Colors.grey;
-            final label = amount > 0
+            final label = amount > 0.004
                 ? 'le deben'
-                : amount < 0
+                : amount < -0.004
                     ? 'debe'
-                    : 'saldado';
-            return ListTile(
-              title: Text(balance['display_name']),
-              subtitle: Text(label),
-              trailing: Text(
-                '${balance['balance']} €',
-                style: TextStyle(color: color, fontWeight: FontWeight.bold),
+                    : 'en paz con el grupo';
+            final tema = Theme.of(context);
+            return Card(
+              child: Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                child: Row(
+                  children: [
+                    PersonaAvatar(nombre: balance['display_name'], size: 42),
+                    const SizedBox(width: 13),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            balance['display_name'],
+                            style: tema.textTheme.titleSmall,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 2),
+                          Text(label, style: tema.textTheme.bodySmall),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    SaldoChip(importe: amount),
+                  ],
+                ),
               ),
             );
           },
@@ -185,36 +275,98 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
           return const Center(child: CircularProgressIndicator());
         }
         if (snapshot.hasError) {
-          return _errorList('Error: ${snapshot.error}');
+          return ListView(
+            children: [
+              EstadoVacio(
+                titulo: 'No se pudo cargar',
+                detalle: '${snapshot.error}',
+              ),
+            ],
+          );
         }
         final settlements = snapshot.data ?? [];
         if (settlements.isEmpty) {
-          return _errorList('El grupo ya está saldado. No hay pagos pendientes.');
-        }
-        return ListView.builder(
-          itemCount: settlements.length,
-          itemBuilder: (context, index) {
-            final s = settlements[index];
-            return ListTile(
-              leading: const Icon(Icons.arrow_forward),
-              title: Text('${s['from_display_name']} → ${s['to_display_name']}'),
-              trailing: Text(
-                '${s['amount']} €',
-                style: const TextStyle(fontWeight: FontWeight.bold),
+          return ListView(
+            children: const [
+              EstadoVacio(
+                titulo: 'Todo saldado. A otra cosa. 🎉',
+                detalle: 'No hay pagos pendientes en este grupo.',
               ),
-            );
-          },
+            ],
+          );
+        }
+        final tema = Theme.of(context);
+        final tonos = DividiTones.of(context);
+        return ListView(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 120),
+          children: [
+            Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: tonos.positivoFondo,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Text(
+                settlements.length == 1
+                    ? 'Con 1 solo pago el grupo queda en paz.'
+                    : 'Con ${settlements.length} pagos el grupo queda en paz '
+                        '— el mínimo posible.',
+                style: tema.textTheme.bodyMedium?.copyWith(
+                  color: tonos.positivo,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            for (final s in settlements) ...[
+              Card(
+                child: Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                  child: Row(
+                    children: [
+                      PersonaAvatar(nombre: s['from_display_name'], size: 38),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text.rich(
+                          TextSpan(children: [
+                            TextSpan(text: s['from_display_name']),
+                            TextSpan(
+                              text: '  →  ',
+                              style: TextStyle(
+                                  color: tema.colorScheme.onSurfaceVariant),
+                            ),
+                            TextSpan(text: s['to_display_name']),
+                          ]),
+                          style: tema.textTheme.bodyLarge
+                              ?.copyWith(fontWeight: FontWeight.w600),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Text(
+                        formatearImporte(s['amount']),
+                        style: tema.textTheme.titleMedium?.copyWith(
+                          fontFeatures: const [FontFeature.tabularFigures()],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+            ],
+            const SizedBox(height: 6),
+            Text(
+              'Sugerencias del algoritmo de settle-up: como máximo n−1 pagos.',
+              textAlign: TextAlign.center,
+              style: tema.textTheme.bodySmall,
+            ),
+          ],
         );
       },
-    );
-  }
-
-  Widget _errorList(String message) {
-    return ListView(
-      children: [
-        const SizedBox(height: 100),
-        Center(child: Text(message, textAlign: TextAlign.center)),
-      ],
     );
   }
 }

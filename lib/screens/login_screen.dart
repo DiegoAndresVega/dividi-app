@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../services/api_client.dart';
+import '../widgets/dividi_logo.dart';
 import 'groups_screen.dart';
 import 'register_screen.dart';
 
@@ -45,41 +46,67 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final tema = Theme.of(context);
     return Scaffold(
-      appBar: AppBar(title: const Text('Dividi')),
-      body: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            TextField(
-              controller: _emailController,
-              keyboardType: TextInputType.emailAddress,
-              decoration: const InputDecoration(labelText: 'Email'),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _passwordController,
-              obscureText: true,
-              decoration: const InputDecoration(labelText: 'Contraseña'),
-            ),
-            const SizedBox(height: 24),
-            FilledButton(
-              onPressed: _loading ? null : _submit,
-              child: _loading
-                  ? const SizedBox(
-                      width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Text('Iniciar sesión'),
-            ),
-            TextButton(
-              onPressed: _loading
-                  ? null
-                  : () => Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => const RegisterScreen()),
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 32),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 420),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Center(child: DividiLogo(size: 92)),
+                  const SizedBox(height: 24),
+                  const Center(child: DividiWordmark(size: 46)),
+                  const SizedBox(height: 12),
+                  Center(
+                    child: Text(
+                      '«Cuentas claras, amistades largas.»',
+                      style: tema.textTheme.bodyMedium?.copyWith(
+                        fontStyle: FontStyle.italic,
+                        color: tema.colorScheme.onSurfaceVariant,
                       ),
-              child: const Text('¿No tienes cuenta? Regístrate'),
+                    ),
+                  ),
+                  const SizedBox(height: 44),
+                  TextField(
+                    controller: _emailController,
+                    keyboardType: TextInputType.emailAddress,
+                    decoration: const InputDecoration(labelText: 'Email'),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: _passwordController,
+                    obscureText: true,
+                    decoration: const InputDecoration(labelText: 'Contraseña'),
+                  ),
+                  const SizedBox(height: 28),
+                  FilledButton(
+                    onPressed: _loading ? null : _submit,
+                    child: _loading
+                        ? const SizedBox(
+                            width: 22,
+                            height: 22,
+                            child: CircularProgressIndicator(strokeWidth: 2.5))
+                        : const Text('Iniciar sesión'),
+                  ),
+                  const SizedBox(height: 10),
+                  TextButton(
+                    onPressed: _loading
+                        ? null
+                        : () => Navigator.of(context).push(
+                              MaterialPageRoute(
+                                  builder: (_) => const RegisterScreen()),
+                            ),
+                    child: const Text('¿No tienes cuenta? Regístrate'),
+                  ),
+                ],
+              ),
             ),
-          ],
+          ),
         ),
       ),
     );

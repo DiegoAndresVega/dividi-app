@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../services/api_client.dart';
+import '../theme/dividi_theme.dart';
+import '../widgets/add_member_dialog.dart';
+import '../widgets/dividi_bits.dart';
 
 /// Miembros del grupo: lista con porcentajes por defecto y añadir nuevos.
 ///
@@ -32,120 +35,24 @@ class _MembersScreenState extends State<MembersScreen> {
     setState(() => _groupFuture = _apiClient.getGroup(widget.groupId));
   }
 
-  /// Reparto proporcional: el nuevo miembro recibe su %, y el resto escala
-  /// para que todo siga sumando 100 (manteniendo sus proporciones relativas).
-  Map<String, String> _proportionalRebalance(
-      List<dynamic> members, double newPercentage) {
-    final factor = (100 - newPercentage) / 100;
-    final rebalance = <String, String>{};
-    var assigned = 0.0;
-    for (var i = 0; i < members.length; i++) {
-      final old = double.tryParse(members[i]['default_percentage'].toString()) ?? 0;
-      double value;
-      if (i == members.length - 1) {
-        value = 100 - newPercentage - assigned;
-      } else {
-        value = double.parse((old * factor).toStringAsFixed(2));
-        assigned += value;
-      }
-      rebalance[members[i]['id']] = value.toStringAsFixed(2);
-    }
-    return rebalance;
-  }
-
   Future<void> _addMember() async {
     if (_saving) return;
     final group = await _groupFuture;
     if (!mounted) return;
     final members = group['members'] as List<dynamic>;
 
-    final nameController = TextEditingController();
-    final emailController = TextEditingController();
-    // sugerencia: parte igualitaria para el nuevo (100 / n+1)
-    final suggested = 100 / (members.length + 1);
-    final percentController =
-        TextEditingController(text: suggested.toStringAsFixed(2));
-
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Añadir miembro'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: nameController,
-              decoration: const InputDecoration(
-                labelText: 'Nombre',
-                helperText: 'Basta con un nombre: "Persona 1", "Compi"...',
-              ),
-              autofocus: true,
-            ),
-            TextField(
-              controller: emailController,
-              keyboardType: TextInputType.emailAddress,
-              decoration: const InputDecoration(
-                labelText: 'Email (opcional)',
-                helperText: 'Si algún día se registra, se vincula solo',
-              ),
-            ),
-            TextField(
-              controller: percentController,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: const InputDecoration(
-                labelText: 'Porcentaje por defecto (%)',
-                helperText: 'El resto del grupo se reajusta solo',
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancelar'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Añadir'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true) return;
-
-    final name = nameController.text.trim();
-    final email = emailController.text.trim();
-    final percentage =
-        double.tryParse(percentController.text.replaceAll(',', '.'));
-    if (name.isEmpty && email.isEmpty) {
-      _showError('Pon al menos un nombre o un email');
-      return;
-    }
-    if (percentage == null || percentage < 0 || percentage > 100) {
-      _showError('El porcentaje debe ser un número entre 0 y 100');
-      return;
-    }
-
     setState(() => _saving = true);
     try {
-      await _apiClient.addMember(
+      final created = await showAddMemberDialog(
+        context: context,
+        apiClient: _apiClient,
         groupId: widget.groupId,
-        displayName: name.isEmpty ? null : name,
-        email: email.isEmpty ? null : email,
-        defaultPercentage: percentage.toStringAsFixed(2),
-        rebalance: _proportionalRebalance(members, percentage),
+        members: members,
       );
-      await _refresh();
-    } on ApiException catch (e) {
-      _showError(e.message);
+      if (created != null) await _refresh();
     } finally {
       if (mounted) setState(() => _saving = false);
     }
-  }
-
-  void _showError(String message) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
@@ -162,13 +69,18 @@ class _MembersScreenState extends State<MembersScreen> {
             }
             if (snapshot.hasError) {
               return ListView(children: [
-                const SizedBox(height: 100),
-                Center(child: Text('Error: ${snapshot.error}')),
+                EstadoVacio(
+                  titulo: 'No se pudieron cargar los miembros',
+                  detalle: '${snapshot.error}',
+                ),
               ]);
             }
             final members = (snapshot.data?['members'] as List<dynamic>?) ?? [];
-            return ListView.builder(
+            final tema = Theme.of(context);
+            return ListView.separated(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 120),
               itemCount: members.length,
+              separatorBuilder: (_, _) => const SizedBox(height: 10),
               itemBuilder: (context, index) {
                 final member = members[index];
                 final hasAccount = member['user_id'] != null;
@@ -178,15 +90,68 @@ class _MembersScreenState extends State<MembersScreen> {
                     : invitedEmail != null
                         ? 'invitado: $invitedEmail'
                         : 'invitado sin cuenta';
-                return ListTile(
-                  leading: CircleAvatar(
-                    child: Text(member['display_name'][0].toUpperCase()),
-                  ),
-                  title: Text(member['display_name']),
-                  subtitle: Text('${member['role']} · $status'),
-                  trailing: Text(
-                    '${member['default_percentage']}%',
-                    style: const TextStyle(fontWeight: FontWeight.bold),
+                final esAdmin = member['role'] == 'admin';
+                return Card(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 12),
+                    child: Row(
+                      children: [
+                        PersonaAvatar(
+                            nombre: member['display_name'], size: 42),
+                        const SizedBox(width: 13),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Flexible(
+                                    child: Text(
+                                      member['display_name'],
+                                      style: tema.textTheme.titleSmall,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  if (esAdmin) ...[
+                                    const SizedBox(width: 8),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 8, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: DividiTones.of(context)
+                                            .neutroFondo,
+                                        borderRadius:
+                                            BorderRadius.circular(99),
+                                      ),
+                                      child: Text('Admin',
+                                          style: tema.textTheme.labelSmall),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                status,
+                                style: tema.textTheme.bodySmall,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Text(
+                          '${member['default_percentage']} %',
+                          style: tema.textTheme.titleMedium?.copyWith(
+                            fontFeatures: const [
+                              FontFeature.tabularFigures()
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 );
               },
@@ -194,15 +159,16 @@ class _MembersScreenState extends State<MembersScreen> {
           },
         ),
       ),
-      floatingActionButton: FloatingActionButton(
+      floatingActionButton: FloatingActionButton.extended(
         onPressed: _saving ? null : _addMember,
-        child: _saving
+        icon: _saving
             ? const SizedBox(
                 width: 20,
                 height: 20,
-                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                child: CircularProgressIndicator(strokeWidth: 2.5),
               )
-            : const Icon(Icons.person_add),
+            : const Icon(Icons.person_add_alt_1_rounded),
+        label: const Text('Añadir miembro'),
       ),
     );
   }
