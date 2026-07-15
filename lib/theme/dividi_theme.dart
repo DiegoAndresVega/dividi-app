@@ -312,7 +312,7 @@ abstract final class DividiTheme {
           fontSize: 16,
         ),
         extendedPadding: const EdgeInsets.symmetric(horizontal: 22),
-        sizeConstraints: const BoxConstraints.tightFor(height: 56),
+        sizeConstraints: const BoxConstraints.tightFor(width: 56, height: 56),
         extendedSizeConstraints: const BoxConstraints.tightFor(height: 56),
       ),
 
@@ -488,6 +488,30 @@ abstract final class DividiTheme {
         cursorColor: ambar,
         selectionColor: ambar.withValues(alpha: 0.35),
         selectionHandleColor: ambar,
+      ),
+
+      // Barra de navegación inferior (Grupos · Actividad · Perfil):
+      // icono activo en Ámbar, sin píldora — como marca la identidad.
+      navigationBarTheme: NavigationBarThemeData(
+        backgroundColor: superficie,
+        elevation: 0,
+        height: 68,
+        surfaceTintColor: Colors.transparent,
+        indicatorColor: Colors.transparent,
+        overlayColor: const WidgetStatePropertyAll(Colors.transparent),
+        iconTheme: WidgetStateProperty.resolveWith((estados) => IconThemeData(
+              size: 26,
+              color: estados.contains(WidgetState.selected)
+                  ? (esNoche ? ambar : DividiColors.ambarProfundo)
+                  : bruma,
+            )),
+        labelTextStyle:
+            WidgetStateProperty.resolveWith((estados) => TextStyle(
+                  fontFamily: familiaCuerpo,
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w700,
+                  color: estados.contains(WidgetState.selected) ? tinta : bruma,
+                )),
       ),
     );
   }

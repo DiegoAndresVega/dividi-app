@@ -69,8 +69,9 @@ Future<Map<String, dynamic>?> showAddMemberDialog({
               controller: percentController,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
               decoration: const InputDecoration(
-                labelText: 'Porcentaje por defecto (%)',
-                helperText: 'El resto del grupo se reajusta solo',
+                labelText: 'Peso en el hogar (%)',
+                helperText:
+                    'Su parte de los ingresos; el resto se reajusta solo',
               ),
             ),
           ],

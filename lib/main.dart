@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'screens/groups_screen.dart';
+import 'screens/home_screen.dart';
 import 'screens/login_screen.dart';
 import 'services/api_client.dart';
 import 'theme/dividi_theme.dart';
@@ -48,7 +48,7 @@ class _StartupScreenState extends State<StartupScreen> {
     if (!mounted) return;
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(
-        builder: (_) => loggedIn ? const GroupsScreen() : const LoginScreen(),
+        builder: (_) => loggedIn ? const HomeScreen() : const LoginScreen(),
       ),
     );
   }

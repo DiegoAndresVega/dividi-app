@@ -38,6 +38,75 @@ class PersonaAvatar extends StatelessWidget {
   }
 }
 
+/// Pila de avatares solapados, como en las tarjetas de grupo del manual.
+/// Si hay más de [maximo], el último hueco muestra «+n».
+class PilaAvatares extends StatelessWidget {
+  final List<String> nombres;
+  final double size;
+  final int maximo;
+
+  const PilaAvatares({
+    super.key,
+    required this.nombres,
+    this.size = 30,
+    this.maximo = 4,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final desbordan = nombres.length > maximo;
+    final visibles = desbordan ? maximo - 1 : nombres.length;
+    final huecos = visibles + (desbordan ? 1 : 0);
+    if (huecos == 0) return SizedBox(height: size + 4);
+
+    final paso = size * 0.72;
+    final borde = Theme.of(context).colorScheme.surface;
+    final tonos = DividiTones.of(context);
+
+    Widget conBorde(Widget hijo) => Container(
+          padding: const EdgeInsets.all(2),
+          decoration: BoxDecoration(color: borde, shape: BoxShape.circle),
+          child: hijo,
+        );
+
+    return SizedBox(
+      width: (huecos - 1) * paso + size + 4,
+      height: size + 4,
+      child: Stack(
+        children: [
+          for (var i = 0; i < visibles; i++)
+            Positioned(
+              left: i * paso,
+              child: conBorde(PersonaAvatar(nombre: nombres[i], size: size)),
+            ),
+          if (desbordan)
+            Positioned(
+              left: visibles * paso,
+              child: conBorde(Container(
+                width: size,
+                height: size,
+                decoration: BoxDecoration(
+                  color: tonos.neutroFondo,
+                  shape: BoxShape.circle,
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  '+${nombres.length - visibles}',
+                  style: TextStyle(
+                    fontFamily: DividiTheme.familiaTitulares,
+                    fontWeight: FontWeight.w700,
+                    fontSize: size * 0.36,
+                    color: tonos.neutro,
+                  ),
+                ),
+              )),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
 /// Chip de saldo: verde si te deben, rojo si debes, neutro «En paz».
 /// El signo acompaña siempre al número; el color solo refuerza.
 class SaldoChip extends StatelessWidget {
