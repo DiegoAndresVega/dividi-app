@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../services/api_client.dart';
 import '../widgets/dividi_logo.dart';
-import 'groups_screen.dart';
+import 'home_screen.dart';
 import 'register_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -27,7 +27,7 @@ class _LoginScreenState extends State<LoginScreen> {
       );
       if (!mounted) return;
       Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const GroupsScreen()),
+        MaterialPageRoute(builder: (_) => const HomeScreen()),
       );
     } on ApiException catch (e) {
       if (!mounted) return;
@@ -64,7 +64,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   const SizedBox(height: 12),
                   Center(
                     child: Text(
-                      '«Cuentas claras, amistades largas.»',
+                      '«Partes justas, no partes iguales.»',
                       style: tema.textTheme.bodyMedium?.copyWith(
                         fontStyle: FontStyle.italic,
                         color: tema.colorScheme.onSurfaceVariant,

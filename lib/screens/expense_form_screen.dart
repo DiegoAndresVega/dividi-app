@@ -1,15 +1,18 @@
 import 'package:flutter/material.dart';
 
 import '../services/api_client.dart';
+import '../theme/dividi_format.dart';
 import '../theme/dividi_theme.dart';
 import '../widgets/add_member_dialog.dart';
 import '../widgets/dividi_bits.dart';
 
-/// Formulario de gasto: sirve para crear (expense == null) y para editar.
+/// Formulario de gasto (lámina S3 del manual): sirve para crear
+/// (expense == null) y para editar.
 ///
-/// Permite elegir con quién se comparte el gasto y el método de reparto:
-/// a partes iguales entre los seleccionados, o por porcentajes por persona
-/// (validando que sumen 100).
+/// Permite elegir con quién se comparte el gasto y el método de reparto —
+/// los cuatro de la API: iguales, porcentajes (suman 100), importes exactos
+/// (suman el total) y partes — con previsualización en vivo de lo que paga
+/// cada uno.
 class ExpenseFormScreen extends StatefulWidget {
   final String groupId;
   final List<dynamic> members;
@@ -39,10 +42,12 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
   String? _paidById;
   String _splitMethod = 'equal';
 
-  /// Miembros que participan en el gasto y, si es por porcentajes,
-  /// el controlador con el % de cada uno.
+  /// Miembros que participan en el gasto y, según el método, el controlador
+  /// con el % / importe exacto / partes de cada uno.
   final Set<String> _selected = {};
   final Map<String, TextEditingController> _percentControllers = {};
+  final Map<String, TextEditingController> _exactControllers = {};
+  final Map<String, TextEditingController> _sharesControllers = {};
 
   /// Campos de % fijados a mano por el usuario. El resto se rellenan
   /// automáticamente a partes iguales con lo que falte hasta 100.
@@ -59,21 +64,39 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
     super.initState();
     for (final member in _members) {
       _percentControllers[member['id']] = TextEditingController();
+      _exactControllers[member['id']] = TextEditingController();
+      _sharesControllers[member['id']] = TextEditingController(text: '1');
     }
 
     final expense = widget.expense;
     if (expense == null) {
-      // por defecto: participan todos y paga el primero
+      // por defecto: participan todos, paga el primero y el reparto es
+      // «según ingresos» — la seña de identidad de Dividi — precargando
+      // el peso de cada miembro en el hogar (sus % por defecto del grupo)
       _selected.addAll(_members.map((m) => m['id'] as String));
       _paidById = _members.isNotEmpty ? _members.first['id'] : null;
+      _splitMethod = 'percentage';
+      var hayPesos = false;
+      for (final member in _members) {
+        final peso =
+            double.tryParse('${member['default_percentage'] ?? ''}') ?? 0;
+        if (peso > 0) hayPesos = true;
+      }
+      if (hayPesos) {
+        for (final member in _members) {
+          final memberId = member['id'] as String;
+          final peso =
+              double.tryParse('${member['default_percentage'] ?? ''}') ?? 0;
+          _percentControllers[memberId]!.text = _formatPercent(peso);
+          _locked.add(memberId);
+        }
+      }
     } else {
       _descriptionController.text = expense['description'];
       _amountController.text = expense['amount'].toString();
       _category = expense['category'];
       _paidById = expense['paid_by_id'];
       _splitMethod = expense['split_method'];
-      // solo equal/percentage se editan desde la app por ahora
-      if (_splitMethod != 'percentage') _splitMethod = _splitMethod == 'equal' ? 'equal' : _splitMethod;
       for (final split in (expense['splits'] as List<dynamic>)) {
         final memberId = split['group_member_id'] as String;
         _selected.add(memberId);
@@ -81,6 +104,12 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
           _percentControllers[memberId]?.text = split['percentage'].toString();
           // al editar, los % existentes se consideran fijados por el usuario
           _locked.add(memberId);
+        }
+        if (split['exact_amount'] != null) {
+          _exactControllers[memberId]?.text = split['exact_amount'].toString();
+        }
+        if (split['shares'] != null) {
+          _sharesControllers[memberId]?.text = split['shares'].toString();
         }
       }
     }
@@ -137,20 +166,43 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
     for (final controller in _percentControllers.values) {
       controller.dispose();
     }
+    for (final controller in _exactControllers.values) {
+      controller.dispose();
+    }
+    for (final controller in _sharesControllers.values) {
+      controller.dispose();
+    }
     super.dispose();
   }
+
+  double get _amountValue =>
+      double.tryParse(_amountController.text.replaceAll(',', '.')) ?? 0;
+
+  double _numero(TextEditingController? controller) =>
+      double.tryParse(controller?.text.replaceAll(',', '.') ?? '') ?? 0;
 
   double get _percentSum {
     var sum = 0.0;
     for (final id in _selected) {
-      final text = _percentControllers[id]?.text.replaceAll(',', '.') ?? '';
-      sum += double.tryParse(text) ?? 0;
+      sum += _numero(_percentControllers[id]);
     }
     return sum;
   }
 
+  double get _exactSum {
+    var sum = 0.0;
+    for (final id in _selected) {
+      sum += _numero(_exactControllers[id]);
+    }
+    return sum;
+  }
+
+  /// Miembros seleccionados, en el orden estable de la lista del grupo.
+  List<dynamic> get _participantes =>
+      _members.where((m) => _selected.contains(m['id'])).toList();
+
   String? _validate() {
-    if (_descriptionController.text.trim().isEmpty) return 'Pon una descripción';
+    if (_descriptionController.text.trim().isEmpty) return 'Pon un concepto';
     final amount = double.tryParse(_amountController.text.replaceAll(',', '.'));
     if (amount == null || amount <= 0) return 'El importe debe ser un número mayor que 0';
     if (_paidById == null) return 'Elige quién pagó';
@@ -158,18 +210,40 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
     if (_splitMethod == 'percentage' && (_percentSum - 100).abs() > 0.001) {
       return 'Los porcentajes deben sumar 100 (ahora: ${_percentSum.toStringAsFixed(2)})';
     }
+    if (_splitMethod == 'exact' && (_exactSum - amount).abs() > 0.001) {
+      return 'Los importes exactos deben sumar ${amount.toStringAsFixed(2)} (ahora: ${_exactSum.toStringAsFixed(2)})';
+    }
+    if (_splitMethod == 'shares') {
+      for (final id in _selected) {
+        final partes = int.tryParse(_sharesControllers[id]?.text.trim() ?? '');
+        if (partes == null || partes < 1) {
+          return 'Las partes deben ser números enteros mayores que 0';
+        }
+      }
+    }
     return null;
   }
 
   List<Map<String, dynamic>> _buildSplits() {
-    return _selected.map((memberId) {
-      if (_splitMethod == 'percentage') {
-        return {
-          'group_member_id': memberId,
-          'percentage': _percentControllers[memberId]!.text.replaceAll(',', '.').trim(),
-        };
-      }
-      return {'group_member_id': memberId};
+    return _participantes.map<Map<String, dynamic>>((member) {
+      final memberId = member['id'] as String;
+      return switch (_splitMethod) {
+        'percentage' => {
+            'group_member_id': memberId,
+            'percentage':
+                _percentControllers[memberId]!.text.replaceAll(',', '.').trim(),
+          },
+        'exact' => {
+            'group_member_id': memberId,
+            'exact_amount':
+                _exactControllers[memberId]!.text.replaceAll(',', '.').trim(),
+          },
+        'shares' => {
+            'group_member_id': memberId,
+            'shares': int.parse(_sharesControllers[memberId]!.text.trim()),
+          },
+        _ => {'group_member_id': memberId},
+      };
     }).toList();
   }
 
@@ -288,23 +362,39 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
         ],
       ),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
+        padding: const EdgeInsets.fromLTRB(20, 4, 20, 32),
         children: [
-          TextField(
-            controller: _descriptionController,
-            decoration: const InputDecoration(labelText: 'Descripción'),
-          ),
-          const SizedBox(height: 14),
+          // el importe es el protagonista de la pantalla
           TextField(
             controller: _amountController,
-            decoration: const InputDecoration(labelText: 'Importe (€)'),
+            textAlign: TextAlign.center,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            onChanged: (_) => setState(() {}),
             style: const TextStyle(
               fontFamily: DividiTheme.familiaTitulares,
               fontWeight: FontWeight.w800,
-              fontSize: 26,
+              fontSize: 40,
               fontFeatures: [FontFeature.tabularFigures()],
             ),
+            decoration: InputDecoration(
+              filled: false,
+              border: InputBorder.none,
+              enabledBorder: InputBorder.none,
+              focusedBorder: InputBorder.none,
+              hintText: '0,00',
+              suffixText: '€',
+              suffixStyle: TextStyle(
+                fontFamily: DividiTheme.familiaTitulares,
+                fontWeight: FontWeight.w700,
+                fontSize: 24,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          TextField(
+            controller: _descriptionController,
+            decoration: const InputDecoration(labelText: 'Concepto'),
           ),
           const SizedBox(height: 20),
           const EtiquetaSeccion('Categoría'),
@@ -354,9 +444,12 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
           const EtiquetaSeccion('¿Cómo se divide?'),
           const SizedBox(height: 10),
           SegmentedButton<String>(
+            showSelectedIcon: false,
             segments: const [
-              ButtonSegment(value: 'equal', label: Text('Partes iguales')),
-              ButtonSegment(value: 'percentage', label: Text('Porcentajes')),
+              ButtonSegment(value: 'percentage', label: Text('Ingresos')),
+              ButtonSegment(value: 'equal', label: Text('Iguales')),
+              ButtonSegment(value: 'exact', label: Text('Exacto')),
+              ButtonSegment(value: 'shares', label: Text('Partes')),
             ],
             selected: {_splitMethod},
             onSelectionChanged: (selection) => setState(() {
@@ -364,15 +457,24 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
               _recomputeAutoPercentages();
             }),
           ),
-          if (_splitMethod == 'percentage')
-            Padding(
-              padding: const EdgeInsets.only(top: 10),
-              child: Text(
-                'Los campos que no toques se rellenan solos hasta sumar 100. '
-                'Borra un campo para que vuelva a calcularse automáticamente.',
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
+          Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: Text(
+              switch (_splitMethod) {
+                'percentage' =>
+                  'El peso de cada uno en el hogar (su parte de los ingresos): '
+                      'quien gana más aporta más y a todos les cuesta el mismo esfuerzo. '
+                      'Los campos que no toques se ajustan solos hasta sumar 100.',
+                'exact' =>
+                  'Importes exactos por persona: deben sumar el total del gasto.',
+                'shares' =>
+                  'Reparto proporcional por partes: quien tiene 2 partes paga el doble que quien tiene 1.',
+                _ =>
+                  'A partes iguales entre los participantes. El último de la lista absorbe el céntimo del redondeo.',
+              },
+              style: Theme.of(context).textTheme.bodySmall,
             ),
+          ),
           const SizedBox(height: 24),
           const EtiquetaSeccion('¿Quiénes participan?'),
           const SizedBox(height: 6),
@@ -434,6 +536,33 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
                       }),
                     ),
                   ),
+                if (_splitMethod == 'exact' && isSelected)
+                  Padding(
+                    padding: const EdgeInsets.only(left: 48, bottom: 8),
+                    child: TextField(
+                      controller: _exactControllers[memberId],
+                      decoration: const InputDecoration(
+                        labelText: 'Importe (€)',
+                        isDense: true,
+                      ),
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
+                      onChanged: (_) => setState(() {}),
+                    ),
+                  ),
+                if (_splitMethod == 'shares' && isSelected)
+                  Padding(
+                    padding: const EdgeInsets.only(left: 48, bottom: 8),
+                    child: TextField(
+                      controller: _sharesControllers[memberId],
+                      decoration: const InputDecoration(
+                        labelText: 'Partes',
+                        isDense: true,
+                      ),
+                      keyboardType: TextInputType.number,
+                      onChanged: (_) => setState(() {}),
+                    ),
+                  ),
               ],
             );
           }),
@@ -446,34 +575,82 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
             ),
           ),
           if (_splitMethod == 'percentage')
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Builder(builder: (context) {
-                final tonos = DividiTones.of(context);
-                final cuadra = (_percentSum - 100).abs() < 0.001;
-                return Align(
-                  alignment: Alignment.centerLeft,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 14, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: cuadra ? tonos.positivoFondo : tonos.negativoFondo,
-                      borderRadius: BorderRadius.circular(99),
-                    ),
-                    child: Text(
-                      'Suma: ${_percentSum.toStringAsFixed(2)} / 100',
-                      style: TextStyle(
-                        fontFamily: DividiTheme.familiaTitulares,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 14,
-                        color: cuadra ? tonos.positivo : tonos.negativo,
-                        fontFeatures: const [FontFeature.tabularFigures()],
-                      ),
-                    ),
-                  ),
-                );
-              }),
+            _PildoraSuma(
+              texto: 'Suma: ${_percentSum.toStringAsFixed(2)} / 100',
+              cuadra: (_percentSum - 100).abs() < 0.001,
             ),
+          if (_splitMethod == 'exact' && _amountValue > 0)
+            _PildoraSuma(
+              texto:
+                  'Suma: ${_exactSum.toStringAsFixed(2)} / ${_amountValue.toStringAsFixed(2)}',
+              cuadra: (_exactSum - _amountValue).abs() < 0.001,
+            ),
+
+          // lo que paga cada uno, calculado en vivo (el importe definitivo
+          // siempre lo confirma la API al guardar)
+          if (_amountValue > 0 && _selected.isNotEmpty) ...[
+            const SizedBox(height: 24),
+            const EtiquetaSeccion('Lo que paga cada uno'),
+            const SizedBox(height: 10),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                child: Builder(builder: (context) {
+                  final participantes = _participantes;
+                  final entradas = participantes.map((m) {
+                    final id = m['id'] as String;
+                    return switch (_splitMethod) {
+                      'percentage' => _numero(_percentControllers[id]),
+                      'exact' => _numero(_exactControllers[id]),
+                      'shares' => _numero(_sharesControllers[id]),
+                      _ => 0.0,
+                    };
+                  }).toList();
+                  final partes = previsualizarReparto(
+                    metodo: _splitMethod,
+                    total: _amountValue,
+                    entradas: entradas,
+                  );
+                  final tema = Theme.of(context);
+                  return Column(
+                    children: [
+                      for (final (indice, member) in participantes.indexed) ...[
+                        if (indice > 0) const Divider(),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 9),
+                          child: Row(
+                            children: [
+                              PersonaAvatar(
+                                  nombre: member['display_name'], size: 28),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  member['display_name'],
+                                  style: tema.textTheme.bodyMedium?.copyWith(
+                                      fontWeight: FontWeight.w600),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              Text(
+                                formatearImporte(
+                                    indice < partes.length ? partes[indice] : 0),
+                                style: tema.textTheme.titleSmall?.copyWith(
+                                  fontFeatures: const [
+                                    FontFeature.tabularFigures()
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ],
+                  );
+                }),
+              ),
+            ),
+          ],
           const SizedBox(height: 28),
           FilledButton(
             onPressed: _saving ? null : _save,
@@ -485,6 +662,42 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
                 : Text(_isEditing ? 'Guardar cambios' : 'Guardar gasto'),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Píldora de control de suma: verde cuando cuadra, roja cuando no.
+class _PildoraSuma extends StatelessWidget {
+  final String texto;
+  final bool cuadra;
+
+  const _PildoraSuma({required this.texto, required this.cuadra});
+
+  @override
+  Widget build(BuildContext context) {
+    final tonos = DividiTones.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          decoration: BoxDecoration(
+            color: cuadra ? tonos.positivoFondo : tonos.negativoFondo,
+            borderRadius: BorderRadius.circular(99),
+          ),
+          child: Text(
+            texto,
+            style: TextStyle(
+              fontFamily: DividiTheme.familiaTitulares,
+              fontWeight: FontWeight.w700,
+              fontSize: 14,
+              color: cuadra ? tonos.positivo : tonos.negativo,
+              fontFeatures: const [FontFeature.tabularFigures()],
+            ),
+          ),
+        ),
       ),
     );
   }

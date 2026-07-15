@@ -20,8 +20,8 @@ void main() {
     await tester.pumpWidget(MaterialApp(
       home: ExpenseFormScreen(groupId: 'g1', members: members),
     ));
-    // cambiar a modo porcentajes
-    await tester.tap(find.text('Porcentajes'));
+    // asegurar el modo porcentajes (segmento «Ingresos», el de serie)
+    await tester.tap(find.text('Ingresos'));
     await tester.pumpAndSettle();
   }
 

@@ -6,7 +6,10 @@ import '../theme/dividi_theme.dart';
 import '../widgets/dividi_bits.dart';
 import 'expense_form_screen.dart';
 import 'members_screen.dart';
+import 'settle_up_screen.dart';
 
+/// Detalle de grupo (lámina S2 del manual): balances con barras centradas
+/// en cero, botón «Saldar cuentas» y los gastos recientes con tu parte.
 class GroupDetailScreen extends StatefulWidget {
   final String groupId;
   final String groupName;
@@ -19,40 +22,45 @@ class GroupDetailScreen extends StatefulWidget {
 
 class _GroupDetailScreenState extends State<GroupDetailScreen> {
   final _apiClient = ApiClient();
-
-  late Future<Map<String, dynamic>> _groupFuture;
-  late Future<List<dynamic>> _expensesFuture;
-  late Future<List<dynamic>> _balancesFuture;
-  late Future<List<dynamic>> _settleUpFuture;
+  late Future<_DatosGrupo> _futuro;
 
   @override
   void initState() {
     super.initState();
-    _loadAll();
+    _futuro = _cargar();
   }
 
-  void _loadAll() {
-    _groupFuture = _apiClient.getGroup(widget.groupId);
-    _expensesFuture = _apiClient.getExpenses(widget.groupId);
-    _balancesFuture = _apiClient.getBalances(widget.groupId);
-    _settleUpFuture = _apiClient.getSettleUp(widget.groupId);
+  Future<_DatosGrupo> _cargar() async {
+    final resultados = await Future.wait<dynamic>([
+      _apiClient.getGroup(widget.groupId),
+      _apiClient.getBalances(widget.groupId),
+      _apiClient.getExpenses(widget.groupId),
+      _apiClient.currentUserId(),
+    ]);
+    return _DatosGrupo(
+      grupo: resultados[0] as Map<String, dynamic>,
+      balances: resultados[1] as List<dynamic>,
+      gastos: resultados[2] as List<dynamic>,
+      userId: resultados[3] as String?,
+    );
   }
 
   Future<void> _refresh() async {
-    setState(_loadAll);
+    final futuro = _cargar();
+    setState(() => _futuro = futuro);
+    await futuro;
   }
 
   /// Abre el formulario de gasto: para crear (expense == null) o editar.
   Future<void> _openExpenseForm({Map<String, dynamic>? expense}) async {
-    final group = await _groupFuture;
+    final datos = await _futuro;
     if (!mounted) return;
-    final members = (group['members'] as List<dynamic>);
 
     await Navigator.of(context).push<bool>(
       MaterialPageRoute(
         builder: (_) => ExpenseFormScreen(
           groupId: widget.groupId,
-          members: members,
+          members: datos.miembros,
           expense: expense,
         ),
       ),
@@ -62,311 +70,584 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
     if (mounted) await _refresh();
   }
 
+  Future<void> _abrirMiembros() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => MembersScreen(
+          groupId: widget.groupId,
+          groupName: widget.groupName,
+        ),
+      ),
+    );
+    if (mounted) await _refresh();
+  }
+
+  Future<void> _abrirSaldar() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => SettleUpScreen(
+          groupId: widget.groupId,
+          groupName: widget.groupName,
+        ),
+      ),
+    );
+    if (mounted) await _refresh();
+  }
+
+  Future<void> _abrirTodosLosGastos(_DatosGrupo datos) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => _TodosLosGastosScreen(
+          groupId: widget.groupId,
+          groupName: widget.groupName,
+          miembros: datos.miembros,
+          miMiembroId: datos.miMiembroId,
+        ),
+      ),
+    );
+    if (mounted) await _refresh();
+  }
+
   @override
   Widget build(BuildContext context) {
-    return DefaultTabController(
-      length: 3,
-      child: Scaffold(
-        appBar: AppBar(
-          title: Text(widget.groupName),
-          actions: [
-            IconButton(
-              icon: const Icon(Icons.group_outlined),
-              tooltip: 'Miembros',
-              onPressed: () async {
-                await Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => MembersScreen(
-                      groupId: widget.groupId,
-                      groupName: widget.groupName,
+    final tema = Theme.of(context);
+    return Scaffold(
+      appBar: AppBar(title: Text(widget.groupName)),
+      body: RefreshIndicator(
+        onRefresh: _refresh,
+        child: FutureBuilder<_DatosGrupo>(
+          future: _futuro,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            if (snapshot.hasError) {
+              return ListView(children: [
+                EstadoVacio(
+                  titulo: 'No se pudo cargar el grupo',
+                  detalle: '${snapshot.error}',
+                ),
+              ]);
+            }
+            final datos = snapshot.data!;
+            return ListView(
+              padding: const EdgeInsets.fromLTRB(20, 6, 20, 120),
+              children: [
+                // cabecera: cuántos son + pila de avatares (toca para gestionar)
+                InkWell(
+                  onTap: _abrirMiembros,
+                  borderRadius: BorderRadius.circular(12),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(datos.subtitulo,
+                              style: tema.textTheme.bodySmall),
+                        ),
+                        PilaAvatares(nombres: datos.nombresMiembros, size: 28),
+                      ],
                     ),
                   ),
-                );
-                await _refresh();
-              },
-            ),
-            const SizedBox(width: 8),
-          ],
-          bottom: const TabBar(
-            tabs: [
-              Tab(text: 'Gastos'),
-              Tab(text: 'Balances'),
-              Tab(text: 'Saldar'),
-            ],
-          ),
+                ),
+                const SizedBox(height: 10),
+
+                // balances del grupo
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const EtiquetaSeccion('Balances del grupo'),
+                        const SizedBox(height: 8),
+                        if (datos.balances.isEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: Text('Sin balances todavía.',
+                                style: tema.textTheme.bodySmall),
+                          )
+                        else
+                          for (final balance in datos.balances)
+                            _FilaBalance(
+                              nombre: balance['display_name'],
+                              importe: double.tryParse(
+                                      balance['balance'].toString()) ??
+                                  0,
+                              maximo: datos.balanceMaximo,
+                            ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
+
+                // saldar cuentas
+                FilledButton.icon(
+                  onPressed: _abrirSaldar,
+                  icon: const _IconoObelo(),
+                  label: const Text('Saldar cuentas'),
+                ),
+                const SizedBox(height: 14),
+
+                // gastos recientes
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 6),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Expanded(
+                                child: EtiquetaSeccion('Gastos recientes')),
+                            if (datos.gastos.length > _cuantosRecientes)
+                              TextButton(
+                                onPressed: () => _abrirTodosLosGastos(datos),
+                                child: const Text('Ver todos'),
+                              ),
+                          ],
+                        ),
+                        if (datos.gastos.isEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4, bottom: 12),
+                            child: Text(
+                              'Todavía no hay gastos. Apunta el primero con «Nuevo gasto».',
+                              style: tema.textTheme.bodySmall,
+                            ),
+                          )
+                        else
+                          for (final (indice, gasto)
+                              in datos.gastos.take(_cuantosRecientes).indexed) ...[
+                            if (indice > 0) const Divider(),
+                            FilaGasto(
+                              gasto: gasto,
+                              nombrePagador:
+                                  datos.nombreMiembro(gasto['paid_by_id']),
+                              miMiembroId: datos.miMiembroId,
+                              onTap: () => _openExpenseForm(
+                                  expense: gasto as Map<String, dynamic>),
+                            ),
+                          ],
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
         ),
-        body: RefreshIndicator(
-          onRefresh: _refresh,
-          child: TabBarView(
-            children: [
-              _buildExpensesTab(),
-              _buildBalancesTab(),
-              _buildSettleUpTab(),
-            ],
-          ),
-        ),
-        floatingActionButton: FloatingActionButton.extended(
-          onPressed: () => _openExpenseForm(),
-          icon: const Icon(Icons.add_rounded),
-          label: const Text('Nuevo gasto'),
-        ),
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => _openExpenseForm(),
+        icon: const Icon(Icons.add_rounded),
+        label: const Text('Nuevo gasto'),
       ),
     );
   }
 
-  Widget _buildExpensesTab() {
-    return FutureBuilder<List<dynamic>>(
-      future: _expensesFuture,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        if (snapshot.hasError) {
-          return ListView(
-            children: [
-              EstadoVacio(
-                titulo: 'No se pudo cargar',
-                detalle: '${snapshot.error}',
-              ),
-            ],
-          );
-        }
-        final expenses = snapshot.data ?? [];
-        if (expenses.isEmpty) {
-          return ListView(
-            children: const [
-              EstadoVacio(
-                titulo: 'Todavía no hay gastos en este grupo.',
-                detalle: 'Apunta el primero con el botón «Nuevo gasto».',
-              ),
-            ],
-          );
-        }
-        return ListView.separated(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 120),
-          itemCount: expenses.length,
-          separatorBuilder: (_, _) => const SizedBox(height: 10),
-          itemBuilder: (context, index) {
-            final expense = expenses[index];
-            final tema = Theme.of(context);
-            final categoria =
-                DividiTones.of(context).categoria(expense['category']);
-            return Card(
-              clipBehavior: Clip.antiAlias,
-              child: InkWell(
-                onTap: () => _openExpenseForm(expense: expense),
-                child: Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-                  child: Row(
-                    children: [
-                      CategoriaInsignia(categoria: expense['category']),
-                      const SizedBox(width: 13),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              expense['description'],
-                              style: tema.textTheme.titleSmall,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              '${categoria.etiqueta} · ${etiquetaMetodo(expense['split_method'])}',
-                              style: tema.textTheme.bodySmall,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Text(
-                        formatearImporte(expense['amount'],
-                            divisa: expense['currency']),
-                        style: tema.textTheme.titleMedium?.copyWith(
-                          fontFeatures: const [FontFeature.tabularFigures()],
-                        ),
-                      ),
-                    ],
+  static const _cuantosRecientes = 5;
+}
+
+/// El óbelo de la marca como icono del botón «Saldar cuentas».
+class _IconoObelo extends StatelessWidget {
+  const _IconoObelo();
+
+  @override
+  Widget build(BuildContext context) {
+    final color = Theme.of(context).colorScheme.onPrimary;
+    Widget punto() => Container(
+          width: 4.5,
+          height: 4.5,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        );
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        punto(),
+        Container(
+          width: 16,
+          height: 3.5,
+          margin: const EdgeInsets.symmetric(vertical: 2.5),
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(99),
+          ),
+        ),
+        punto(),
+      ],
+    );
+  }
+}
+
+/// Fila de balance: nombre, barra centrada en cero y el importe con signo.
+class _FilaBalance extends StatelessWidget {
+  final String nombre;
+  final double importe;
+  final double maximo;
+
+  const _FilaBalance({
+    required this.nombre,
+    required this.importe,
+    required this.maximo,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final tema = Theme.of(context);
+    final tonos = DividiTones.of(context);
+    final positivo = importe > 0.004;
+    final negativo = importe < -0.004;
+    final fraccion = maximo <= 0 ? 0.0 : (importe.abs() / maximo).clamp(0.0, 1.0);
+    final colorImporte = positivo
+        ? tonos.positivo
+        : negativo
+            ? tonos.negativo
+            : tonos.neutro;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 7),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 76,
+            child: Row(
+              children: [
+                Container(
+                  width: 9,
+                  height: 9,
+                  decoration: BoxDecoration(
+                    color: tonos.colorPersona(nombre),
+                    shape: BoxShape.circle,
                   ),
                 ),
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
-
-  Widget _buildBalancesTab() {
-    return FutureBuilder<List<dynamic>>(
-      future: _balancesFuture,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        if (snapshot.hasError) {
-          return ListView(
-            children: [
-              EstadoVacio(
-                titulo: 'No se pudo cargar',
-                detalle: '${snapshot.error}',
-              ),
-            ],
-          );
-        }
-        final balances = snapshot.data ?? [];
-        return ListView.separated(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 120),
-          itemCount: balances.length,
-          separatorBuilder: (_, _) => const SizedBox(height: 10),
-          itemBuilder: (context, index) {
-            final balance = balances[index];
-            final amount = double.tryParse(balance['balance'].toString()) ?? 0;
-            final label = amount > 0.004
-                ? 'le deben'
-                : amount < -0.004
-                    ? 'debe'
-                    : 'en paz con el grupo';
-            final tema = Theme.of(context);
-            return Card(
-              child: Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                child: Row(
-                  children: [
-                    PersonaAvatar(nombre: balance['display_name'], size: 42),
-                    const SizedBox(width: 13),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            balance['display_name'],
-                            style: tema.textTheme.titleSmall,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          const SizedBox(height: 2),
-                          Text(label, style: tema.textTheme.bodySmall),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    SaldoChip(importe: amount),
-                  ],
+                const SizedBox(width: 7),
+                Expanded(
+                  child: Text(
+                    nombre,
+                    style: tema.textTheme.bodyMedium
+                        ?.copyWith(fontWeight: FontWeight.w600, fontSize: 13.5),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
-
-  Widget _buildSettleUpTab() {
-    return FutureBuilder<List<dynamic>>(
-      future: _settleUpFuture,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        if (snapshot.hasError) {
-          return ListView(
-            children: [
-              EstadoVacio(
-                titulo: 'No se pudo cargar',
-                detalle: '${snapshot.error}',
-              ),
-            ],
-          );
-        }
-        final settlements = snapshot.data ?? [];
-        if (settlements.isEmpty) {
-          return ListView(
-            children: const [
-              EstadoVacio(
-                titulo: 'Todo saldado. A otra cosa. 🎉',
-                detalle: 'No hay pagos pendientes en este grupo.',
-              ),
-            ],
-          );
-        }
-        final tema = Theme.of(context);
-        final tonos = DividiTones.of(context);
-        return ListView(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 120),
-          children: [
-            Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: BoxDecoration(
-                color: tonos.positivoFondo,
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Text(
-                settlements.length == 1
-                    ? 'Con 1 solo pago el grupo queda en paz.'
-                    : 'Con ${settlements.length} pagos el grupo queda en paz '
-                        '— el mínimo posible.',
-                style: tema.textTheme.bodyMedium?.copyWith(
-                  color: tonos.positivo,
-                  fontWeight: FontWeight.w600,
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: SizedBox(
+              height: 22,
+              child: CustomPaint(
+                painter: _PintorBarra(
+                  fraccion: positivo || negativo ? fraccion : 0,
+                  positivo: positivo,
+                  eje: tema.colorScheme.outline,
                 ),
               ),
             ),
-            const SizedBox(height: 12),
-            for (final s in settlements) ...[
-              Card(
-                child: Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-                  child: Row(
-                    children: [
-                      PersonaAvatar(nombre: s['from_display_name'], size: 38),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text.rich(
-                          TextSpan(children: [
-                            TextSpan(text: s['from_display_name']),
-                            TextSpan(
-                              text: '  →  ',
-                              style: TextStyle(
-                                  color: tema.colorScheme.onSurfaceVariant),
-                            ),
-                            TextSpan(text: s['to_display_name']),
-                          ]),
-                          style: tema.textTheme.bodyLarge
-                              ?.copyWith(fontWeight: FontWeight.w600),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Text(
-                        formatearImporte(s['amount']),
-                        style: tema.textTheme.titleMedium?.copyWith(
-                          fontFeatures: const [FontFeature.tabularFigures()],
-                        ),
-                      ),
-                    ],
+          ),
+          const SizedBox(width: 8),
+          SizedBox(
+            width: 72,
+            child: Text(
+              formatearImporte(importe, conSigno: true).replaceAll(' €', ''),
+              textAlign: TextAlign.right,
+              style: TextStyle(
+                fontFamily: DividiTheme.familiaTitulares,
+                fontWeight: FontWeight.w700,
+                fontSize: 13.5,
+                color: colorImporte,
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PintorBarra extends CustomPainter {
+  final double fraccion;
+  final bool positivo;
+  final Color eje;
+
+  // verde/rojo de barra fijos, como en el manual: funcionan en día y noche
+  static const _verde = Color(0xFF2E9E6B);
+  static const _rojo = Color(0xFFD4685D);
+
+  const _PintorBarra({
+    required this.fraccion,
+    required this.positivo,
+    required this.eje,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final centro = size.width / 2;
+    canvas.drawLine(
+      Offset(centro, -2),
+      Offset(centro, size.height + 2),
+      Paint()
+        ..color = eje
+        ..strokeWidth = 1.5,
+    );
+    if (fraccion <= 0) return;
+
+    final ancho = ((size.width / 2) - 2) * fraccion;
+    final rect = positivo
+        ? Rect.fromLTRB(centro, 2, centro + ancho.clamp(4, size.width / 2), size.height - 2)
+        : Rect.fromLTRB(centro - ancho.clamp(4, size.width / 2), 2, centro, size.height - 2);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(rect, const Radius.circular(7)),
+      Paint()..color = positivo ? _verde : _rojo,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_PintorBarra anterior) =>
+      anterior.fraccion != fraccion ||
+      anterior.positivo != positivo ||
+      anterior.eje != eje;
+}
+
+/// Fila de gasto: insignia de categoría, quién pagó y tu parte.
+/// Compartida entre «Gastos recientes» y la lista completa.
+class FilaGasto extends StatelessWidget {
+  final dynamic gasto;
+  final String nombrePagador;
+  final String? miMiembroId;
+  final VoidCallback onTap;
+
+  const FilaGasto({
+    super.key,
+    required this.gasto,
+    required this.nombrePagador,
+    required this.miMiembroId,
+    required this.onTap,
+  });
+
+  double get _miParte {
+    if (miMiembroId == null) return 0;
+    for (final split in (gasto['splits'] as List<dynamic>? ?? const [])) {
+      if (split['group_member_id'] == miMiembroId) {
+        return double.tryParse(split['computed_amount'].toString()) ?? 0;
+      }
+    }
+    return 0;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tema = Theme.of(context);
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        child: Row(
+          children: [
+            CategoriaInsignia(categoria: gasto['category'], size: 42),
+            const SizedBox(width: 13),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    gasto['description'],
+                    style: tema.textTheme.titleSmall,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Pagó $nombrePagador · ${fechaCorta(gasto['created_at'])} · ${etiquetaMetodoCorto(gasto['split_method'])}',
+                    style: tema.textTheme.bodySmall,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  formatearImporte(gasto['amount'], divisa: gasto['currency']),
+                  style: tema.textTheme.titleMedium?.copyWith(
+                    fontFeatures: const [FontFeature.tabularFigures()],
                   ),
                 ),
-              ),
-              const SizedBox(height: 10),
-            ],
-            const SizedBox(height: 6),
-            Text(
-              'Sugerencias del algoritmo de settle-up: como máximo n−1 pagos.',
-              textAlign: TextAlign.center,
-              style: tema.textTheme.bodySmall,
+                if (miMiembroId != null)
+                  Text(
+                    'tu parte: ${formatearImporte(_miParte).replaceAll(' €', '')}',
+                    style: tema.textTheme.labelSmall,
+                  ),
+              ],
             ),
           ],
-        );
-      },
+        ),
+      ),
     );
+  }
+}
+
+/// Lista completa de gastos del grupo («Ver todos»).
+class _TodosLosGastosScreen extends StatefulWidget {
+  final String groupId;
+  final String groupName;
+  final List<dynamic> miembros;
+  final String? miMiembroId;
+
+  const _TodosLosGastosScreen({
+    required this.groupId,
+    required this.groupName,
+    required this.miembros,
+    required this.miMiembroId,
+  });
+
+  @override
+  State<_TodosLosGastosScreen> createState() => _TodosLosGastosScreenState();
+}
+
+class _TodosLosGastosScreenState extends State<_TodosLosGastosScreen> {
+  final _apiClient = ApiClient();
+  late Future<List<dynamic>> _futuro;
+
+  @override
+  void initState() {
+    super.initState();
+    _futuro = _apiClient.getExpenses(widget.groupId);
+  }
+
+  Future<void> _refresh() async {
+    final futuro = _apiClient.getExpenses(widget.groupId);
+    setState(() => _futuro = futuro);
+    await futuro;
+  }
+
+  String _nombreMiembro(String? miembroId) {
+    for (final m in widget.miembros) {
+      if (m['id'] == miembroId) return m['display_name'] as String;
+    }
+    return '—';
+  }
+
+  Future<void> _editar(Map<String, dynamic> gasto) async {
+    await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => ExpenseFormScreen(
+          groupId: widget.groupId,
+          members: widget.miembros,
+          expense: gasto,
+        ),
+      ),
+    );
+    if (mounted) await _refresh();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text('Gastos de ${widget.groupName}')),
+      body: RefreshIndicator(
+        onRefresh: _refresh,
+        child: FutureBuilder<List<dynamic>>(
+          future: _futuro,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            if (snapshot.hasError) {
+              return ListView(children: [
+                EstadoVacio(
+                  titulo: 'No se pudo cargar',
+                  detalle: '${snapshot.error}',
+                ),
+              ]);
+            }
+            final gastos = snapshot.data ?? [];
+            return ListView.separated(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 40),
+              itemCount: gastos.length,
+              separatorBuilder: (_, _) => const SizedBox(height: 10),
+              itemBuilder: (context, index) {
+                final gasto = gastos[index];
+                return Card(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                    child: FilaGasto(
+                      gasto: gasto,
+                      nombrePagador: _nombreMiembro(gasto['paid_by_id']),
+                      miMiembroId: widget.miMiembroId,
+                      onTap: () => _editar(gasto as Map<String, dynamic>),
+                    ),
+                  ),
+                );
+              },
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Modelo de vista del detalle (solo presentación).
+// ---------------------------------------------------------------------------
+
+class _DatosGrupo {
+  final Map<String, dynamic> grupo;
+  final List<dynamic> balances;
+  final List<dynamic> gastos;
+  final String? userId;
+
+  const _DatosGrupo({
+    required this.grupo,
+    required this.balances,
+    required this.gastos,
+    required this.userId,
+  });
+
+  List<dynamic> get miembros => (grupo['members'] as List<dynamic>?) ?? const [];
+
+  List<String> get nombresMiembros =>
+      miembros.map((m) => m['display_name'] as String).toList();
+
+  Map<String, dynamic>? get _miMiembro {
+    if (userId == null) return null;
+    for (final m in miembros) {
+      if (m['user_id'] == userId) return m as Map<String, dynamic>;
+    }
+    return null;
+  }
+
+  String? get miMiembroId => _miMiembro?['id'] as String?;
+
+  String get subtitulo {
+    final n = miembros.length;
+    final cuantos = n == 1 ? '1 miembro' : '$n miembros';
+    final divisa = grupo['default_currency'] ?? 'EUR';
+    final rol = _miMiembro?['role'] == 'admin' ? 'eres admin' : 'eres miembro';
+    return '$cuantos · $divisa · $rol';
+  }
+
+  double get balanceMaximo {
+    var maximo = 0.0;
+    for (final b in balances) {
+      final valor = (double.tryParse(b['balance'].toString()) ?? 0).abs();
+      if (valor > maximo) maximo = valor;
+    }
+    return maximo;
+  }
+
+  String nombreMiembro(String? miembroId) {
+    for (final m in miembros) {
+      if (m['id'] == miembroId) return m['display_name'] as String;
+    }
+    return '—';
   }
 }

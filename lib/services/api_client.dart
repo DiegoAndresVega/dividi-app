@@ -27,6 +27,24 @@ class ApiClient {
 
   Future<bool> isLoggedIn() async => (await getAccessToken()) != null;
 
+  /// Id del usuario con la sesión iniciada, leído del claim `sub` del JWT.
+  /// Solo se decodifica el payload para mostrar datos propios en la interfaz;
+  /// la verificación real del token la hace siempre el servidor.
+  Future<String?> currentUserId() async {
+    final token = await getAccessToken();
+    if (token == null) return null;
+    try {
+      final parts = token.split('.');
+      if (parts.length != 3) return null;
+      final payload = jsonDecode(
+        utf8.decode(base64Url.decode(base64Url.normalize(parts[1]))),
+      ) as Map<String, dynamic>;
+      return payload['sub'] as String?;
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<void> logout() async {
     await _storage.delete(key: 'access_token');
     await _storage.delete(key: 'refresh_token');
@@ -286,5 +304,26 @@ class ApiClient {
       throw ApiException(_extractErrorMessage(response));
     }
     return jsonDecode(response.body) as List<dynamic>;
+  }
+
+  /// Registra un pago entre dos miembros (p. ej. al saldar una sugerencia
+  /// del settle-up). El backend lo refleja en los balances del grupo.
+  Future<Map<String, dynamic>> createPayment({
+    required String groupId,
+    required String fromMemberId,
+    required String toMemberId,
+    required String amount,
+    String? note,
+  }) async {
+    final response = await _authorizedPost('/groups/$groupId/payments', {
+      'from_member_id': fromMemberId,
+      'to_member_id': toMemberId,
+      'amount': amount,
+      'note': ?note,
+    });
+    if (response.statusCode != 201) {
+      throw ApiException(_extractErrorMessage(response));
+    }
+    return jsonDecode(response.body) as Map<String, dynamic>;
   }
 }

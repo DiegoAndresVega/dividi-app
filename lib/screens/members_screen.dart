@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../services/api_client.dart';
+import '../theme/dividi_format.dart';
 import '../theme/dividi_theme.dart';
 import '../widgets/add_member_dialog.dart';
 import '../widgets/dividi_bits.dart';
@@ -79,10 +80,37 @@ class _MembersScreenState extends State<MembersScreen> {
             final tema = Theme.of(context);
             return ListView.separated(
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 120),
-              itemCount: members.length,
+              itemCount: members.length + 1,
               separatorBuilder: (_, _) => const SizedBox(height: 10),
               itemBuilder: (context, index) {
-                final member = members[index];
+                if (index == 0) {
+                  // la idea central de Dividi, explicada donde se configura
+                  final tonos = DividiTones.of(context);
+                  return Container(
+                    padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+                    decoration: BoxDecoration(
+                      color: tonos.neutroFondo,
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('El reparto del hogar',
+                            style: tema.textTheme.titleSmall),
+                        const SizedBox(height: 4),
+                        Text(
+                          'El porcentaje de cada persona es su peso en los '
+                          'gastos comunes — por ejemplo, su parte de los '
+                          'ingresos de la casa. Siempre suma 100, y los gastos '
+                          '«según ingresos» lo usan de serie: quien gana más '
+                          'aporta más, y a todos les cuesta el mismo esfuerzo.',
+                          style: tema.textTheme.bodySmall,
+                        ),
+                      ],
+                    ),
+                  );
+                }
+                final member = members[index - 1];
                 final hasAccount = member['user_id'] != null;
                 final invitedEmail = member['invited_email'];
                 final status = hasAccount
@@ -143,7 +171,7 @@ class _MembersScreenState extends State<MembersScreen> {
                         ),
                         const SizedBox(width: 12),
                         Text(
-                          '${member['default_percentage']} %',
+                          formatearPorcentaje(member['default_percentage']),
                           style: tema.textTheme.titleMedium?.copyWith(
                             fontFeatures: const [
                               FontFeature.tabularFigures()

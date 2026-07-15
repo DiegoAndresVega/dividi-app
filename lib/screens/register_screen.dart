@@ -63,7 +63,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Text(
-                  'Dividi funciona por invitación: pide un código a quien ya esté dentro.',
+                  'Dividi reparte los gastos comunes según los ingresos de '
+                  'cada uno: quien gana más aporta más, y a todos les cuesta '
+                  'el mismo esfuerzo. Funciona por invitación: pide un código '
+                  'a quien ya esté dentro.',
                   style: tema.textTheme.bodyMedium?.copyWith(
                     color: tema.colorScheme.onSurfaceVariant,
                   ),
