@@ -1,11 +1,16 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../services/api_client.dart';
+import '../services/debt_reminder.dart';
 import '../theme/dividi_format.dart';
 import '../theme/dividi_theme.dart';
 import '../widgets/dividi_bits.dart';
 import 'group_detail_screen.dart';
 import 'login_screen.dart';
+import 'profile_tab.dart';
+import 'savings_tab.dart';
 
 /// Pantalla de inicio de Dividi (lámina S1 del manual): saludo, resumen
 /// «entre todos tus grupos», tarjetas de grupo con tu saldo, y las pestañas
@@ -33,6 +38,12 @@ class _HomeScreenState extends State<HomeScreen> {
   /// de saldo, el contador de gastos y la pestaña de actividad).
   Future<_DatosInicio> _cargar() async {
     final userId = await _apiClient.currentUserId();
+    // el nombre real vive en /me; si falla no rompe el inicio (queda el
+    // nombre de miembro de algún grupo como respaldo)
+    String nombreMe = '';
+    try {
+      nombreMe = ((await _apiClient.getMe())['name'] ?? '') as String;
+    } catch (_) {}
     final grupos = await _apiClient.getGroups();
     final fichas = await Future.wait(grupos.map((grupo) async {
       List<dynamic> balances = const [];
@@ -54,7 +65,11 @@ class _HomeScreenState extends State<HomeScreen> {
         userId: userId,
       );
     }));
-    return _DatosInicio(userId: userId, fichas: fichas);
+    final datos =
+        _DatosInicio(userId: userId, nombreMe: nombreMe, fichas: fichas);
+    // recordatorio local de deudas (M10): se reprograma en cada carga
+    unawaited(DebtReminder.actualizar(datos.saldoTotal));
+    return datos;
   }
 
   Future<void> _refresh() async {
@@ -143,6 +158,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   EstadoVacio(
                     titulo: 'No se pudieron cargar tus grupos',
                     detalle: '${snapshot.error}',
+                    onRetry: _refresh,
                   ),
                 ]),
               );
@@ -151,7 +167,11 @@ class _HomeScreenState extends State<HomeScreen> {
             return switch (_tab) {
               0 => _tabGrupos(datos),
               1 => _tabActividad(datos),
-              _ => _tabPerfil(datos),
+              2 => const SavingsTab(),
+              _ => ProfileTab(
+                  numGrupos: datos.fichas.length,
+                  onLogout: _logout,
+                ),
             };
           },
         ),
@@ -173,6 +193,11 @@ class _HomeScreenState extends State<HomeScreen> {
               icon: Icon(Icons.show_chart_rounded),
               selectedIcon: Icon(Icons.show_chart_rounded),
               label: 'Actividad',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.account_balance_wallet_outlined),
+              selectedIcon: Icon(Icons.account_balance_wallet_rounded),
+              label: 'Mi dinero',
             ),
             NavigationDestination(
               icon: Icon(Icons.person_outline_rounded),
@@ -319,73 +344,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // ---------------------------------------------------------- pestaña Perfil
-
-  Widget _tabPerfil(_DatosInicio datos) {
-    final tema = Theme.of(context);
-    final nombre = datos.nombreUsuario;
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(28, 48, 28, 40),
-      children: [
-        Center(
-          child: nombre.isEmpty
-              ? const DividiLogoAvatarFallback()
-              : PersonaAvatar(nombre: nombre, size: 88),
-        ),
-        const SizedBox(height: 18),
-        Center(
-          child: Text(
-            nombre.isEmpty ? 'Tu cuenta' : nombre,
-            style: tema.textTheme.headlineMedium,
-          ),
-        ),
-        const SizedBox(height: 6),
-        Center(
-          child: Text(
-            datos.fichas.length == 1
-                ? 'En 1 grupo · Dividi v1.0'
-                : 'En ${datos.fichas.length} grupos · Dividi v1.0',
-            style: tema.textTheme.bodySmall,
-          ),
-        ),
-        const SizedBox(height: 40),
-        OutlinedButton.icon(
-          onPressed: _logout,
-          icon: const Icon(Icons.logout_rounded, size: 20),
-          label: const Text('Cerrar sesión'),
-        ),
-        const SizedBox(height: 56),
-        Center(
-          child: Text(
-            '«Cuentas claras, amistades largas.»',
-            style: tema.textTheme.bodyMedium?.copyWith(
-              fontStyle: FontStyle.italic,
-              color: tema.colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-/// Avatar de reserva para el perfil cuando aún no conocemos el nombre.
-class DividiLogoAvatarFallback extends StatelessWidget {
-  const DividiLogoAvatarFallback({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 88,
-      height: 88,
-      decoration: const BoxDecoration(
-        color: DividiColors.ambar,
-        shape: BoxShape.circle,
-      ),
-      child: const Icon(Icons.person_rounded,
-          size: 44, color: DividiColors.tinta),
-    );
-  }
 }
 
 /// Tarjeta-resumen sobre Tinta: el saldo global del usuario. Colores fijos
@@ -517,11 +475,17 @@ class _GrupoCard extends StatelessWidget {
 
 class _DatosInicio {
   final String? userId;
+  final String nombreMe;
   final List<_FichaGrupo> fichas;
 
-  const _DatosInicio({required this.userId, required this.fichas});
+  const _DatosInicio({
+    required this.userId,
+    required this.nombreMe,
+    required this.fichas,
+  });
 
   String get nombreUsuario {
+    if (nombreMe.isNotEmpty) return nombreMe;
     for (final ficha in fichas) {
       final nombre = ficha.miNombre;
       if (nombre != null && nombre.isNotEmpty) return nombre;

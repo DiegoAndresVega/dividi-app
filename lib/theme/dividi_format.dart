@@ -83,6 +83,15 @@ const _mesesCortos = [
 String saludoFecha(DateTime fecha) =>
     '${_dias[fecha.weekday - 1]}, ${fecha.day} de ${_meses[fecha.month - 1]}';
 
+/// «2026-07» → «julio de 2026» — para los planes de ahorro.
+String mesDePeriodo(String? periodo) {
+  final partes = (periodo ?? '').split('-');
+  if (partes.length != 2) return periodo ?? '';
+  final mes = int.tryParse(partes[1]);
+  if (mes == null || mes < 1 || mes > 12) return periodo!;
+  return '${_meses[mes - 1]} de ${partes[0]}';
+}
+
 /// «hoy», «ayer» o «8 mar» — para las líneas secundarias de las listas.
 String fechaCorta(String? iso) {
   final fecha = DateTime.tryParse(iso ?? '')?.toLocal();

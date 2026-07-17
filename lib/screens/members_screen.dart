@@ -73,6 +73,7 @@ class _MembersScreenState extends State<MembersScreen> {
                 EstadoVacio(
                   titulo: 'No se pudieron cargar los miembros',
                   detalle: '${snapshot.error}',
+                  onRetry: _refresh,
                 ),
               ]);
             }

@@ -1,11 +1,18 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../services/api_client.dart';
 import '../theme/dividi_format.dart';
 import '../theme/dividi_theme.dart';
 import '../widgets/dividi_bits.dart';
+import '../widgets/donut_categorias.dart';
+import '../widgets/tique_sheet.dart';
 import 'expense_form_screen.dart';
 import 'members_screen.dart';
+import 'recurring_screen.dart';
 import 'settle_up_screen.dart';
 
 /// Detalle de grupo (lámina S2 del manual): balances con barras centradas
@@ -35,13 +42,15 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
       _apiClient.getGroup(widget.groupId),
       _apiClient.getBalances(widget.groupId),
       _apiClient.getExpenses(widget.groupId),
+      _apiClient.getPayments(widget.groupId),
       _apiClient.currentUserId(),
     ]);
     return _DatosGrupo(
       grupo: resultados[0] as Map<String, dynamic>,
       balances: resultados[1] as List<dynamic>,
       gastos: resultados[2] as List<dynamic>,
-      userId: resultados[3] as String?,
+      pagos: resultados[3] as List<dynamic>,
+      userId: resultados[4] as String?,
     );
   }
 
@@ -94,6 +103,54 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
     if (mounted) await _refresh();
   }
 
+  Future<void> _abrirRecurrentes() async {
+    final datos = await _futuro;
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => RecurringScreen(
+          groupId: widget.groupId,
+          groupName: widget.groupName,
+          miembros: datos.miembros,
+        ),
+      ),
+    );
+    if (mounted) await _refresh();
+  }
+
+  /// Exporta el resumen del grupo en CSV y abre la hoja de compartir (M9).
+  Future<void> _exportarCsv() async {
+    try {
+      final csv = await _apiClient.exportGroupCsv(widget.groupId);
+      final carpeta = await getTemporaryDirectory();
+      final nombre = widget.groupName
+          .replaceAll(RegExp(r'[^\w\- ]'), '')
+          .trim()
+          .replaceAll(' ', '-');
+      final archivo = File(
+          '${carpeta.path}/dividi-${nombre.isEmpty ? 'grupo' : nombre}.csv');
+      await archivo.writeAsString(csv);
+      if (!mounted) return;
+      await SharePlus.instance.share(ShareParams(
+        files: [XFile(archivo.path, mimeType: 'text/csv')],
+        subject: 'Resumen de ${widget.groupName} · Dividi',
+      ));
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+    }
+  }
+
+  Future<void> _abrirTique(Map<String, dynamic> gasto) async {
+    final cambio = await mostrarTiqueSheet(
+      context,
+      apiClient: _apiClient,
+      groupId: widget.groupId,
+      gasto: gasto,
+    );
+    if (cambio && mounted) await _refresh();
+  }
+
   Future<void> _abrirTodosLosGastos(_DatosGrupo datos) async {
     await Navigator.of(context).push(
       MaterialPageRoute(
@@ -112,7 +169,24 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
   Widget build(BuildContext context) {
     final tema = Theme.of(context);
     return Scaffold(
-      appBar: AppBar(title: Text(widget.groupName)),
+      appBar: AppBar(
+        title: Text(widget.groupName),
+        actions: [
+          PopupMenuButton<String>(
+            onSelected: (accion) => switch (accion) {
+              'recurrentes' => _abrirRecurrentes(),
+              _ => _exportarCsv(),
+            },
+            itemBuilder: (_) => const [
+              PopupMenuItem(
+                value: 'recurrentes',
+                child: Text('Gastos recurrentes'),
+              ),
+              PopupMenuItem(value: 'exportar', child: Text('Exportar CSV')),
+            ],
+          ),
+        ],
+      ),
       body: RefreshIndicator(
         onRefresh: _refresh,
         child: FutureBuilder<_DatosGrupo>(
@@ -126,6 +200,7 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
                 EstadoVacio(
                   titulo: 'No se pudo cargar el grupo',
                   detalle: '${snapshot.error}',
+                  onRetry: _refresh,
                 ),
               ]);
             }
@@ -190,6 +265,25 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
                 ),
                 const SizedBox(height: 14),
 
+                // ¿en qué se nos va? — dónut por categorías (M5)
+                if (datos.gastosDelDonut.isNotEmpty) ...[
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          EtiquetaSeccion(
+                              '¿En qué se nos va? · ${datos.etiquetaDonut}'),
+                          const SizedBox(height: 12),
+                          DonutCategorias(gastos: datos.gastosDelDonut),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                ],
+
                 // gastos recientes
                 Card(
                   child: Padding(
@@ -227,12 +321,40 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
                               miMiembroId: datos.miMiembroId,
                               onTap: () => _openExpenseForm(
                                   expense: gasto as Map<String, dynamic>),
+                              onLongPress: () =>
+                                  _abrirTique(gasto as Map<String, dynamic>),
                             ),
                           ],
                       ],
                     ),
                   ),
                 ),
+
+                // pagos entre miembros (M6): «te lo pagué el martes», con recibo
+                if (datos.pagos.isNotEmpty) ...[
+                  const SizedBox(height: 14),
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const EtiquetaSeccion('Pagos entre miembros'),
+                          const SizedBox(height: 4),
+                          for (final pago in datos.pagos)
+                            _FilaPago(
+                              de: datos.nombreMiembro(pago['from_member_id']),
+                              a: datos.nombreMiembro(pago['to_member_id']),
+                              fecha: pago['paid_at'],
+                              importe: double.tryParse(
+                                      pago['amount'].toString()) ??
+                                  0,
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
               ],
             );
           },
@@ -420,12 +542,16 @@ class FilaGasto extends StatelessWidget {
   final String? miMiembroId;
   final VoidCallback onTap;
 
+  /// Mantener pulsado abre la hoja del tique (M8).
+  final VoidCallback? onLongPress;
+
   const FilaGasto({
     super.key,
     required this.gasto,
     required this.nombrePagador,
     required this.miMiembroId,
     required this.onTap,
+    this.onLongPress,
   });
 
   double get _miParte {
@@ -443,6 +569,7 @@ class FilaGasto extends StatelessWidget {
     final tema = Theme.of(context);
     return InkWell(
       onTap: onTap,
+      onLongPress: onLongPress,
       borderRadius: BorderRadius.circular(12),
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 10),
@@ -470,6 +597,14 @@ class FilaGasto extends StatelessWidget {
                 ],
               ),
             ),
+            if (gasto['receipt_image_url'] != null) ...[
+              const SizedBox(width: 8),
+              Icon(
+                Icons.receipt_long_rounded,
+                size: 17,
+                color: tema.colorScheme.onSurfaceVariant,
+              ),
+            ],
             const SizedBox(width: 12),
             Column(
               crossAxisAlignment: CrossAxisAlignment.end,
@@ -489,6 +624,66 @@ class FilaGasto extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Fila de un pago entre miembros: quién pagó a quién, cuándo y cuánto.
+class _FilaPago extends StatelessWidget {
+  final String de;
+  final String a;
+  final String? fecha;
+  final double importe;
+
+  const _FilaPago({
+    required this.de,
+    required this.a,
+    required this.fecha,
+    required this.importe,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final tema = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        children: [
+          PersonaAvatar(nombre: de, size: 30),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: Icon(
+              Icons.arrow_right_alt_rounded,
+              size: 20,
+              color: tema.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          PersonaAvatar(nombre: a, size: 30),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '$de pagó a $a',
+                  style: tema.textTheme.titleSmall,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 2),
+                Text(fechaCorta(fecha), style: tema.textTheme.bodySmall),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          Text(
+            formatearImporte(importe),
+            style: tema.textTheme.titleMedium?.copyWith(
+              fontFeatures: const [FontFeature.tabularFigures()],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -516,16 +711,101 @@ class _TodosLosGastosScreenState extends State<_TodosLosGastosScreen> {
   final _apiClient = ApiClient();
   late Future<List<dynamic>> _futuro;
 
+  // filtros (M4): la API filtra en servidor, la app solo los pide
+  static const _categorias = [
+    'comida', 'transporte', 'alojamiento', 'ocio', 'otros',
+  ];
+  String? _categoria;
+  DateTimeRange? _rango;
+
   @override
   void initState() {
     super.initState();
-    _futuro = _apiClient.getExpenses(widget.groupId);
+    _futuro = _pedirGastos();
   }
 
+  Future<List<dynamic>> _pedirGastos() => _apiClient.getExpenses(
+        widget.groupId,
+        category: _categoria,
+        dateFrom: _rango?.start,
+        dateTo: _rango == null
+            ? null
+            : DateTime(_rango!.end.year, _rango!.end.month, _rango!.end.day,
+                23, 59, 59),
+      );
+
   Future<void> _refresh() async {
-    final futuro = _apiClient.getExpenses(widget.groupId);
+    final futuro = _pedirGastos();
     setState(() => _futuro = futuro);
     await futuro;
+  }
+
+  Future<void> _elegirFechas() async {
+    final ahora = DateTime.now();
+    final rango = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(ahora.year - 3),
+      lastDate: ahora,
+      initialDateRange: _rango,
+      helpText: 'Filtrar por fechas',
+      saveText: 'Aplicar',
+    );
+    if (rango == null) return;
+    setState(() => _rango = rango);
+    await _refresh();
+  }
+
+  String get _etiquetaRango {
+    if (_rango == null) return 'Fechas';
+    String dia(DateTime d) => '${d.day}/${d.month}';
+    return '${dia(_rango!.start)} – ${dia(_rango!.end)}';
+  }
+
+  Widget _barraFiltros() {
+    final tonos = DividiTones.of(context);
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Row(
+        children: [
+          FilterChip(
+            label: Text(_etiquetaRango),
+            avatar: _rango == null
+                ? const Icon(Icons.calendar_month_rounded, size: 17)
+                : null,
+            selected: _rango != null,
+            onSelected: (_) => _elegirFechas(),
+            onDeleted: _rango == null
+                ? null
+                : () {
+                    setState(() => _rango = null);
+                    _refresh();
+                  },
+          ),
+          const SizedBox(width: 8),
+          ChoiceChip(
+            label: const Text('Todo'),
+            selected: _categoria == null,
+            onSelected: (_) {
+              setState(() => _categoria = null);
+              _refresh();
+            },
+          ),
+          for (final categoria in _categorias) ...[
+            const SizedBox(width: 8),
+            ChoiceChip(
+              label: Text(tonos.categoria(categoria).etiqueta),
+              selected: _categoria == categoria,
+              onSelected: (_) {
+                setState(
+                    () => _categoria = _categoria == categoria ? null : categoria);
+                _refresh();
+              },
+            ),
+          ],
+        ],
+      ),
+    );
   }
 
   String _nombreMiembro(String? miembroId) {
@@ -548,48 +828,80 @@ class _TodosLosGastosScreenState extends State<_TodosLosGastosScreen> {
     if (mounted) await _refresh();
   }
 
+  Future<void> _tique(Map<String, dynamic> gasto) async {
+    final cambio = await mostrarTiqueSheet(
+      context,
+      apiClient: _apiClient,
+      groupId: widget.groupId,
+      gasto: gasto,
+    );
+    if (cambio && mounted) await _refresh();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: Text('Gastos de ${widget.groupName}')),
-      body: RefreshIndicator(
-        onRefresh: _refresh,
-        child: FutureBuilder<List<dynamic>>(
-          future: _futuro,
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator());
-            }
-            if (snapshot.hasError) {
-              return ListView(children: [
-                EstadoVacio(
-                  titulo: 'No se pudo cargar',
-                  detalle: '${snapshot.error}',
-                ),
-              ]);
-            }
-            final gastos = snapshot.data ?? [];
-            return ListView.separated(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 40),
-              itemCount: gastos.length,
-              separatorBuilder: (_, _) => const SizedBox(height: 10),
-              itemBuilder: (context, index) {
-                final gasto = gastos[index];
-                return Card(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 14),
-                    child: FilaGasto(
-                      gasto: gasto,
-                      nombrePagador: _nombreMiembro(gasto['paid_by_id']),
-                      miMiembroId: widget.miMiembroId,
-                      onTap: () => _editar(gasto as Map<String, dynamic>),
-                    ),
-                  ),
-                );
-              },
-            );
-          },
-        ),
+      body: Column(
+        children: [
+          const SizedBox(height: 8),
+          _barraFiltros(),
+          const SizedBox(height: 4),
+          Expanded(
+            child: RefreshIndicator(
+              onRefresh: _refresh,
+              child: FutureBuilder<List<dynamic>>(
+                future: _futuro,
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  if (snapshot.hasError) {
+                    return ListView(children: [
+                      EstadoVacio(
+                        titulo: 'No se pudo cargar',
+                        detalle: '${snapshot.error}',
+                        onRetry: _refresh,
+                      ),
+                    ]);
+                  }
+                  final gastos = snapshot.data ?? [];
+                  if (gastos.isEmpty) {
+                    return ListView(children: const [
+                      EstadoVacio(
+                        titulo: 'Nada por aquí.',
+                        detalle:
+                            'Con esos filtros no aparece ningún gasto. '
+                            'Prueba a quitar alguno.',
+                      ),
+                    ]);
+                  }
+                  return ListView.separated(
+                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 40),
+                    itemCount: gastos.length,
+                    separatorBuilder: (_, _) => const SizedBox(height: 10),
+                    itemBuilder: (context, index) {
+                      final gasto = gastos[index];
+                      return Card(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 14),
+                          child: FilaGasto(
+                            gasto: gasto,
+                            nombrePagador: _nombreMiembro(gasto['paid_by_id']),
+                            miMiembroId: widget.miMiembroId,
+                            onTap: () => _editar(gasto as Map<String, dynamic>),
+                            onLongPress: () =>
+                                _tique(gasto as Map<String, dynamic>),
+                          ),
+                        ),
+                      );
+                    },
+                  );
+                },
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -603,14 +915,43 @@ class _DatosGrupo {
   final Map<String, dynamic> grupo;
   final List<dynamic> balances;
   final List<dynamic> gastos;
+  final List<dynamic> pagos;
   final String? userId;
 
   const _DatosGrupo({
     required this.grupo,
     required this.balances,
     required this.gastos,
+    required this.pagos,
     required this.userId,
   });
+
+  /// Gastos que alimentan el dónut: los del mes en curso, o todo el
+  /// histórico si este mes aún no tiene ninguno.
+  List<dynamic> get gastosDelDonut {
+    final delMes = _gastosDelMes;
+    return delMes.isNotEmpty ? delMes : gastos;
+  }
+
+  String get etiquetaDonut {
+    if (_gastosDelMes.isNotEmpty) {
+      final ahora = DateTime.now();
+      final periodo =
+          '${ahora.year}-${ahora.month.toString().padLeft(2, '0')}';
+      return mesDePeriodo(periodo).split(' de ').first;
+    }
+    return 'todo el histórico';
+  }
+
+  List<dynamic> get _gastosDelMes {
+    final ahora = DateTime.now();
+    return gastos.where((g) {
+      final fecha = DateTime.tryParse(g['created_at'] ?? '')?.toLocal();
+      return fecha != null &&
+          fecha.year == ahora.year &&
+          fecha.month == ahora.month;
+    }).toList();
+  }
 
   List<dynamic> get miembros => (grupo['members'] as List<dynamic>?) ?? const [];
 

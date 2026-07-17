@@ -200,7 +200,15 @@ class EstadoVacio extends StatelessWidget {
   final String titulo;
   final String? detalle;
 
-  const EstadoVacio({super.key, required this.titulo, this.detalle});
+  /// Si se indica, muestra un botón «Reintentar» bajo el mensaje.
+  final VoidCallback? onRetry;
+
+  const EstadoVacio({
+    super.key,
+    required this.titulo,
+    this.detalle,
+    this.onRetry,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -229,6 +237,14 @@ class EstadoVacio extends StatelessWidget {
               detalle!,
               textAlign: TextAlign.center,
               style: tema.textTheme.bodySmall,
+            ),
+          ],
+          if (onRetry != null) ...[
+            const SizedBox(height: 22),
+            OutlinedButton.icon(
+              onPressed: onRetry,
+              icon: const Icon(Icons.refresh_rounded, size: 20),
+              label: const Text('Reintentar'),
             ),
           ],
         ],
