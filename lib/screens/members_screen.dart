@@ -7,6 +7,7 @@ import '../widgets/add_member_dialog.dart';
 import '../widgets/dividi_bits.dart';
 import '../widgets/edit_member_dialog.dart';
 import '../widgets/member_rebalance.dart';
+import 'edit_percentages_screen.dart';
 
 /// Miembros del grupo: lista con porcentajes por defecto y añadir nuevos.
 ///
@@ -149,6 +150,22 @@ class _MembersScreenState extends State<MembersScreen> {
     }
   }
 
+  Future<void> _editarPorcentajes() async {
+    if (_saving) return;
+    final group = await _groupFuture;
+    if (!mounted) return;
+    final members = group['members'] as List<dynamic>;
+    final cambiado = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => EditPercentagesScreen(
+          groupId: widget.groupId,
+          members: members,
+        ),
+      ),
+    );
+    if (cambiado == true && mounted) await _refresh();
+  }
+
   Future<void> _editMember(Map<String, dynamic> member) async {
     if (_saving) return;
     final group = await _groupFuture;
@@ -224,6 +241,15 @@ class _MembersScreenState extends State<MembersScreen> {
                           '«según ingresos» lo usan de serie: quien gana más '
                           'aporta más, y a todos les cuesta el mismo esfuerzo.',
                           style: tema.textTheme.bodySmall,
+                        ),
+                        const SizedBox(height: 12),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: FilledButton.tonalIcon(
+                            onPressed: _saving ? null : _editarPorcentajes,
+                            icon: const Icon(Icons.tune_rounded, size: 18),
+                            label: const Text('Editar porcentajes'),
+                          ),
                         ),
                       ],
                     ),

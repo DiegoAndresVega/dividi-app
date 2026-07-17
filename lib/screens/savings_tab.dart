@@ -387,7 +387,10 @@ class _FilaPersonal extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 10),
         child: Row(
           children: [
-            CategoriaInsignia(categoria: gasto['category'], size: 40),
+            CategoriaInsignia(
+                categoria: gasto['category'],
+                emoji: gasto['category_icon'],
+                size: 40),
             const SizedBox(width: 12),
             Expanded(
               child: Column(

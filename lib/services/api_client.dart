@@ -351,6 +351,7 @@ class ApiClient {
     required String splitMethod,
     List<Map<String, dynamic>>? splits,
     String category = 'otros',
+    String? categoryIcon,
   }) async {
     final response = await _authorizedPost('/groups/$groupId/expenses', {
       'description': description,
@@ -358,6 +359,7 @@ class ApiClient {
       'paid_by': paidBy,
       'split_method': splitMethod,
       'category': category,
+      'category_icon': ?categoryIcon,
       'splits': ?splits,
     });
     if (response.statusCode != 201) {
@@ -376,6 +378,7 @@ class ApiClient {
     required String splitMethod,
     List<Map<String, dynamic>>? splits,
     String category = 'otros',
+    String? categoryIcon,
   }) async {
     final response = await _authorizedPatch('/groups/$groupId/expenses/$expenseId', {
       'description': description,
@@ -383,6 +386,8 @@ class ApiClient {
       'paid_by': paidBy,
       'split_method': splitMethod,
       'category': category,
+      // siempre presente: null limpia el emoji al volver a una predefinida
+      'category_icon': categoryIcon,
       'splits': ?splits,
     });
     if (response.statusCode != 200) {
@@ -516,6 +521,7 @@ class ApiClient {
     required String description,
     required String amount,
     required String category,
+    String? categoryIcon,
     required String paidBy,
     required String splitMethod,
     required int dayOfMonth,
@@ -524,6 +530,7 @@ class ApiClient {
       'description': description,
       'amount': amount,
       'category': category,
+      'category_icon': ?categoryIcon,
       'paid_by': paidBy,
       'split_method': splitMethod,
       'day_of_month': dayOfMonth,
@@ -662,11 +669,13 @@ class ApiClient {
     required String description,
     required String amount,
     required String category,
+    String? categoryIcon,
   }) async {
     final response = await _authorizedPost('/me/expenses', {
       'description': description,
       'amount': amount,
       'category': category,
+      'category_icon': ?categoryIcon,
     });
     if (response.statusCode != 201) {
       throw ApiException(_extractErrorMessage(response));
@@ -679,11 +688,14 @@ class ApiClient {
     required String description,
     required String amount,
     required String category,
+    String? categoryIcon,
   }) async {
     final response = await _authorizedPatch('/me/expenses/$expenseId', {
       'description': description,
       'amount': amount,
       'category': category,
+      // siempre presente: null limpia el emoji al volver a una predefinida
+      'category_icon': categoryIcon,
     });
     if (response.statusCode != 200) {
       throw ApiException(_extractErrorMessage(response));

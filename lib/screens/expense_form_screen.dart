@@ -4,6 +4,7 @@ import '../services/api_client.dart';
 import '../theme/dividi_format.dart';
 import '../theme/dividi_theme.dart';
 import '../widgets/add_member_dialog.dart';
+import '../widgets/categoria_selector.dart';
 import '../widgets/dividi_bits.dart';
 
 /// Formulario de gasto (lámina S3 del manual): sirve para crear
@@ -39,6 +40,8 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
   final _descriptionController = TextEditingController();
   final _amountController = TextEditingController();
   String _category = 'otros';
+  // emoji de la categoría inventada («agua» → 💧); null en las predefinidas
+  String? _categoryIcon;
   String? _paidById;
   String _splitMethod = 'equal';
 
@@ -53,12 +56,16 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
   final Map<String, TextEditingController> _sharesControllers = {};
 
   /// Campos de % fijados a mano por el usuario. El resto se rellenan
-  /// automáticamente a partes iguales con lo que falte hasta 100.
+  /// automáticamente a partes iguales con lo que falte hasta 100 (solo cuando
+  /// `_autoCompletar` está activo).
   final Set<String> _locked = {};
 
-  bool _saving = false;
+  /// Autocompletar: apagado por defecto → pones todos los porcentajes a mano y
+  /// deben sumar 100. Encendido → los campos que dejes vacíos se rellenan solos
+  /// con lo que falte hasta 100.
+  bool _autoCompletar = false;
 
-  static const _categories = ['comida', 'transporte', 'alojamiento', 'ocio', 'otros'];
+  bool _saving = false;
 
   bool get _isEditing => widget.expense != null;
 
@@ -100,6 +107,7 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
       _descriptionController.text = expense['description'];
       _amountController.text = expense['amount'].toString();
       _category = expense['category'];
+      _categoryIcon = expense['category_icon'];
       _paidById = expense['paid_by_id'];
       _splitMethod = expense['split_method'];
       for (final split in (expense['splits'] as List<dynamic>)) {
@@ -147,6 +155,8 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
   /// Nunca escribe en el campo que se está editando (el que tiene el foco).
   void _recomputeAutoPercentages() {
     if (_splitMethod != 'percentage') return;
+    // en modo manual no se toca ningún campo: los pones todos tú
+    if (!_autoCompletar) return;
     final focusedId = _focusedPercentId;
     final autoIds = _selected
         .where((id) => !_locked.contains(id) && id != focusedId)
@@ -322,6 +332,7 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
           splitMethod: _splitMethod,
           splits: _buildSplits(),
           category: _category,
+          categoryIcon: _categoryIcon,
         );
       } else {
         await _apiClient.createExpense(
@@ -332,6 +343,7 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
           splitMethod: _splitMethod,
           splits: _buildSplits(),
           category: _category,
+          categoryIcon: _categoryIcon,
         );
       }
       if (!mounted) return;
@@ -436,26 +448,13 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
           const SizedBox(height: 20),
           const EtiquetaSeccion('Categoría'),
           const SizedBox(height: 10),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: _categories.map((c) {
-              final estilo = DividiTones.of(context).categoria(c);
-              final seleccionada = _category == c;
-              return ChoiceChip(
-                avatar: Icon(
-                  estilo.icono,
-                  size: 18,
-                  color: seleccionada
-                      ? Theme.of(context).colorScheme.onPrimary
-                      : estilo.color,
-                ),
-                label: Text(estilo.etiqueta),
-                selected: seleccionada,
-                showCheckmark: false,
-                onSelected: (_) => setState(() => _category = c),
-              );
-            }).toList(),
+          CategoriaSelector(
+            categoria: _category,
+            emoji: _categoryIcon,
+            onChanged: (categoria, emoji) => setState(() {
+              _category = categoria;
+              _categoryIcon = emoji;
+            }),
           ),
           const SizedBox(height: 20),
           DropdownButtonFormField<String>(
@@ -499,9 +498,9 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
             child: Text(
               switch (_splitMethod) {
                 'percentage' =>
-                  'El peso de cada uno en el hogar (su parte de los ingresos): '
-                      'quien gana más aporta más y a todos les cuesta el mismo esfuerzo. '
-                      'Los campos que no toques se ajustan solos hasta sumar 100.',
+                  'El peso de cada uno (su parte de los ingresos): quien gana '
+                      'más aporta más. Pon el porcentaje de cada persona; deben '
+                      'sumar 100.',
                 'exact' =>
                   'Importes exactos por persona: deben sumar el total del gasto.',
                 'shares' =>
@@ -512,6 +511,21 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
               style: Theme.of(context).textTheme.bodySmall,
             ),
           ),
+          if (_splitMethod == 'percentage')
+            CheckboxListTile(
+              value: _autoCompletar,
+              onChanged: (v) => setState(() {
+                _autoCompletar = v ?? false;
+                if (_autoCompletar) _recomputeAutoPercentages();
+              }),
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              controlAffinity: ListTileControlAffinity.leading,
+              title: const Text('Completar automáticamente'),
+              subtitle: const Text(
+                'Rellena lo que falte hasta 100 en los campos que dejes vacíos',
+              ),
+            ),
           const SizedBox(height: 24),
           const EtiquetaSeccion('¿Quiénes participan?'),
           const SizedBox(height: 6),
@@ -557,10 +571,12 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
                       decoration: InputDecoration(
                         labelText: 'Porcentaje (%)',
                         isDense: true,
-                        // candado visual: fijado a mano vs calculado solo
-                        suffixIcon: _locked.contains(memberId)
-                            ? const Icon(Icons.lock_outline, size: 18)
-                            : const Icon(Icons.autorenew, size: 18),
+                        // solo en modo autocompletar: candado (a mano) vs auto
+                        suffixIcon: !_autoCompletar
+                            ? null
+                            : (_locked.contains(memberId)
+                                ? const Icon(Icons.lock_outline, size: 18)
+                                : const Icon(Icons.autorenew, size: 18)),
                       ),
                       keyboardType:
                           const TextInputType.numberWithOptions(decimal: true),

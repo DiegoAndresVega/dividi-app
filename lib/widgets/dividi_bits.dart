@@ -158,15 +158,24 @@ class SaldoChip extends StatelessWidget {
 }
 
 /// Insignia cuadrada redondeada con el icono de la categoría del gasto.
+/// Si el gasto trae emoji (categoría inventada, p. ej. «agua» → 💧),
+/// el emoji manda sobre el icono del tema.
 class CategoriaInsignia extends StatelessWidget {
   final String? categoria;
+  final String? emoji;
   final double size;
 
-  const CategoriaInsignia({super.key, required this.categoria, this.size = 44});
+  const CategoriaInsignia({
+    super.key,
+    required this.categoria,
+    this.emoji,
+    this.size = 44,
+  });
 
   @override
   Widget build(BuildContext context) {
     final estilo = DividiTones.of(context).categoria(categoria);
+    final emoji = this.emoji;
     return Container(
       width: size,
       height: size,
@@ -174,7 +183,10 @@ class CategoriaInsignia extends StatelessWidget {
         color: estilo.fondo,
         borderRadius: BorderRadius.circular(size * 0.3),
       ),
-      child: Icon(estilo.icono, size: size * 0.5, color: estilo.color),
+      alignment: Alignment.center,
+      child: emoji == null || emoji.isEmpty
+          ? Icon(estilo.icono, size: size * 0.5, color: estilo.color)
+          : Text(emoji, style: TextStyle(fontSize: size * 0.42)),
     );
   }
 }

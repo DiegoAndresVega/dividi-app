@@ -14,9 +14,7 @@ class FinancesFormScreen extends StatefulWidget {
 }
 
 class _FinancesFormScreenState extends State<FinancesFormScreen> {
-  static const _categorias = [
-    'comida', 'transporte', 'alojamiento', 'ocio', 'otros',
-  ];
+  static const _categorias = DividiTones.predefinidas;
 
   final _apiClient = ApiClient();
   final _nomina = TextEditingController();

@@ -292,7 +292,10 @@ class _HomeScreenState extends State<HomeScreen> {
                         horizontal: 14, vertical: 12),
                     child: Row(
                       children: [
-                        CategoriaInsignia(categoria: gasto['category'], size: 42),
+                        CategoriaInsignia(
+                            categoria: gasto['category'],
+                            emoji: gasto['category_icon'],
+                            size: 42),
                         const SizedBox(width: 13),
                         Expanded(
                           child: Column(

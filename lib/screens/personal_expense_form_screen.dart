@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../services/api_client.dart';
-import '../theme/dividi_theme.dart';
+import '../widgets/categoria_selector.dart';
 
 /// Apuntar o editar un gasto personal (M11): descripción, importe y
 /// categoría. Nadie más lo ve; no toca ningún grupo.
@@ -17,14 +17,12 @@ class PersonalExpenseFormScreen extends StatefulWidget {
 }
 
 class _PersonalExpenseFormScreenState extends State<PersonalExpenseFormScreen> {
-  static const _categorias = [
-    'comida', 'transporte', 'alojamiento', 'ocio', 'otros',
-  ];
-
   final _apiClient = ApiClient();
   late final TextEditingController _descripcion;
   late final TextEditingController _importe;
   late String _categoria;
+  // emoji de la categoría inventada («agua» → 💧); null en las predefinidas
+  String? _categoriaEmoji;
   bool _enviando = false;
 
   bool get _esEdicion => widget.gasto != null;
@@ -44,6 +42,7 @@ class _PersonalExpenseFormScreenState extends State<PersonalExpenseFormScreen> {
               .replaceAll('.', ','),
     );
     _categoria = widget.gasto?['category'] ?? 'otros';
+    _categoriaEmoji = widget.gasto?['category_icon'];
   }
 
   @override
@@ -71,12 +70,14 @@ class _PersonalExpenseFormScreenState extends State<PersonalExpenseFormScreen> {
           description: descripcion,
           amount: importe.toStringAsFixed(2),
           category: _categoria,
+          categoryIcon: _categoriaEmoji,
         );
       } else {
         await _apiClient.createPersonalExpense(
           description: descripcion,
           amount: importe.toStringAsFixed(2),
           category: _categoria,
+          categoryIcon: _categoriaEmoji,
         );
       }
       if (mounted) Navigator.of(context).pop(true);
@@ -118,7 +119,6 @@ class _PersonalExpenseFormScreenState extends State<PersonalExpenseFormScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final tonos = DividiTones.of(context);
     return Scaffold(
       appBar: AppBar(
         title: Text(_esEdicion ? 'Editar gasto personal' : 'Gasto personal'),
@@ -151,24 +151,13 @@ class _PersonalExpenseFormScreenState extends State<PersonalExpenseFormScreen> {
               decoration: const InputDecoration(labelText: 'Importe (€)'),
             ),
             const SizedBox(height: 20),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (final categoria in _categorias)
-                  ChoiceChip(
-                    avatar: Icon(
-                      tonos.categoria(categoria).icono,
-                      size: 17,
-                      color: _categoria == categoria
-                          ? tonos.categoria(categoria).color
-                          : null,
-                    ),
-                    label: Text(tonos.categoria(categoria).etiqueta),
-                    selected: _categoria == categoria,
-                    onSelected: (_) => setState(() => _categoria = categoria),
-                  ),
-              ],
+            CategoriaSelector(
+              categoria: _categoria,
+              emoji: _categoriaEmoji,
+              onChanged: (categoria, emoji) => setState(() {
+                _categoria = categoria;
+                _categoriaEmoji = emoji;
+              }),
             ),
             const SizedBox(height: 26),
             FilledButton(

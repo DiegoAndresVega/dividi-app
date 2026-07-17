@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../services/api_client.dart';
 import '../theme/dividi_format.dart';
-import '../theme/dividi_theme.dart';
+import '../widgets/categoria_selector.dart';
 import '../widgets/dividi_bits.dart';
 
 /// Gastos recurrentes del grupo (M7): el alquiler se apunta solo.
@@ -153,7 +153,9 @@ class _RecurringScreenState extends State<RecurringScreen> {
                     child: Row(
                       children: [
                         CategoriaInsignia(
-                            categoria: regla['category'], size: 42),
+                            categoria: regla['category'],
+                            emoji: regla['category_icon'],
+                            size: 42),
                         const SizedBox(width: 13),
                         Expanded(
                           child: Column(
@@ -219,14 +221,12 @@ class _RecurringFormScreen extends StatefulWidget {
 }
 
 class _RecurringFormScreenState extends State<_RecurringFormScreen> {
-  static const _categorias = [
-    'comida', 'transporte', 'alojamiento', 'ocio', 'otros',
-  ];
-
   final _apiClient = ApiClient();
   final _descripcion = TextEditingController();
   final _importe = TextEditingController();
-  String _categoria = 'alojamiento';
+  String _categoria = 'casa';
+  // emoji de la categoría inventada («agua» → 💧); null en las predefinidas
+  String? _categoriaEmoji;
   String _metodo = 'percentage';
   late String _pagador = widget.miembros.first['id'] as String;
   int _dia = 1;
@@ -256,6 +256,7 @@ class _RecurringFormScreenState extends State<_RecurringFormScreen> {
         description: descripcion,
         amount: importe.toStringAsFixed(2),
         category: _categoria,
+        categoryIcon: _categoriaEmoji,
         paidBy: _pagador,
         splitMethod: _metodo,
         dayOfMonth: _dia,
@@ -272,7 +273,6 @@ class _RecurringFormScreenState extends State<_RecurringFormScreen> {
   @override
   Widget build(BuildContext context) {
     final tema = Theme.of(context);
-    final tonos = DividiTones.of(context);
     return Scaffold(
       appBar: AppBar(title: const Text('Nueva regla recurrente')),
       body: SafeArea(
@@ -295,17 +295,13 @@ class _RecurringFormScreenState extends State<_RecurringFormScreen> {
               decoration: const InputDecoration(labelText: 'Importe (€)'),
             ),
             const SizedBox(height: 18),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (final categoria in _categorias)
-                  ChoiceChip(
-                    label: Text(tonos.categoria(categoria).etiqueta),
-                    selected: _categoria == categoria,
-                    onSelected: (_) => setState(() => _categoria = categoria),
-                  ),
-              ],
+            CategoriaSelector(
+              categoria: _categoria,
+              emoji: _categoriaEmoji,
+              onChanged: (categoria, emoji) => setState(() {
+                _categoria = categoria;
+                _categoriaEmoji = emoji;
+              }),
             ),
             const SizedBox(height: 20),
             DropdownButtonFormField<String>(

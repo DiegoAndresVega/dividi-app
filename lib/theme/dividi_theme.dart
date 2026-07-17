@@ -92,18 +92,52 @@ class DividiTones extends ThemeExtension<DividiTones> {
     return paletaPersonas[h % paletaPersonas.length];
   }
 
-  CategoriaEstilo categoria(String? nombre) =>
-      categorias[nombre] ?? categorias['otros']!;
+  /// Orden canónico de las categorías predefinidas en formularios y filtros.
+  static const predefinidas = [
+    'comida', 'supermercado', 'casa', 'transporte', 'gasolina',
+    'ocio', 'bar', 'recibos', 'telefono', 'viajes', 'membresia', 'otros',
+  ];
+
+  /// Estilo de una categoría: predefinida → el suyo; inventada por el usuario
+  /// («agua») → etiqueta capitalizada y color estable derivado del nombre,
+  /// igual que las personas. El emoji lo aporta cada gasto (category_icon).
+  CategoriaEstilo categoria(String? nombre) {
+    final propio = categorias[nombre];
+    if (propio != null) return propio;
+    final limpio = (nombre ?? '').trim();
+    if (limpio.isEmpty) return categorias['otros']!;
+    final color = colorPersona(limpio);
+    return CategoriaEstilo(
+      limpio[0].toUpperCase() + limpio.substring(1),
+      color.withValues(alpha: 0.16),
+      color,
+      Icons.sell_rounded,
+    );
+  }
 
   static const _categoriasClaro = <String, CategoriaEstilo>{
     'comida': CategoriaEstilo('Comida', Color(0xFFF6E3D7), Color(0xFFC4622F),
         Icons.restaurant_rounded),
+    'supermercado': CategoriaEstilo('Súper', Color(0xFFDDECDD),
+        Color(0xFF3E8E5A), Icons.shopping_cart_rounded),
+    'casa': CategoriaEstilo('Casa', Color(0xFFF1E6D5), Color(0xFFA9762F),
+        Icons.home_rounded),
     'transporte': CategoriaEstilo('Transporte', Color(0xFFDFE9F3),
         Color(0xFF3D6FA5), Icons.directions_bus_rounded),
-    'alojamiento': CategoriaEstilo('Alojamiento', Color(0xFFEAE3F4),
-        Color(0xFF7A5FA8), Icons.hotel_rounded),
+    'gasolina': CategoriaEstilo('Gasolina', Color(0xFFD9E8E6), Color(0xFF2E8B84),
+        Icons.local_gas_station_rounded),
     'ocio': CategoriaEstilo('Ocio', Color(0xFFF5DFEA), Color(0xFFB94F7D),
         Icons.local_activity_rounded),
+    'bar': CategoriaEstilo('Bar', Color(0xFFF0E1E9), Color(0xFF9C4A72),
+        Icons.local_bar_rounded),
+    'recibos': CategoriaEstilo('Recibos', Color(0xFFEAE3F4), Color(0xFF7A5FA8),
+        Icons.receipt_long_rounded),
+    'telefono': CategoriaEstilo('Teléfono', Color(0xFFE3E5F6),
+        Color(0xFF5661B3), Icons.smartphone_rounded),
+    'viajes': CategoriaEstilo('Viajes', Color(0xFFD9EBF2), Color(0xFF2E7FA8),
+        Icons.flight_rounded),
+    'membresia': CategoriaEstilo('Membresía', Color(0xFFEAEDD6),
+        Color(0xFF75821F), Icons.card_membership_rounded),
     'otros': CategoriaEstilo('Otros', Color(0xFFE7E9EB), Color(0xFF5B6672),
         Icons.more_horiz_rounded),
   };
@@ -111,12 +145,26 @@ class DividiTones extends ThemeExtension<DividiTones> {
   static const _categoriasNoche = <String, CategoriaEstilo>{
     'comida': CategoriaEstilo('Comida', Color(0xFF3A2A1E), Color(0xFFE8935C),
         Icons.restaurant_rounded),
+    'supermercado': CategoriaEstilo('Súper', Color(0xFF1F2E23),
+        Color(0xFF6FBE8C), Icons.shopping_cart_rounded),
+    'casa': CategoriaEstilo('Casa', Color(0xFF302719), Color(0xFFD1A45E),
+        Icons.home_rounded),
     'transporte': CategoriaEstilo('Transporte', Color(0xFF1E2C3B),
         Color(0xFF7FA9D4), Icons.directions_bus_rounded),
-    'alojamiento': CategoriaEstilo('Alojamiento', Color(0xFF2C2438),
-        Color(0xFFB3A0D6), Icons.hotel_rounded),
+    'gasolina': CategoriaEstilo('Gasolina', Color(0xFF1B2C2A), Color(0xFF66C0B4),
+        Icons.local_gas_station_rounded),
     'ocio': CategoriaEstilo('Ocio', Color(0xFF38222D), Color(0xFFD98BAE),
         Icons.local_activity_rounded),
+    'bar': CategoriaEstilo('Bar', Color(0xFF33212B), Color(0xFFD98BB0),
+        Icons.local_bar_rounded),
+    'recibos': CategoriaEstilo('Recibos', Color(0xFF2C2438), Color(0xFFB3A0D6),
+        Icons.receipt_long_rounded),
+    'telefono': CategoriaEstilo('Teléfono', Color(0xFF232741),
+        Color(0xFF98A2E6), Icons.smartphone_rounded),
+    'viajes': CategoriaEstilo('Viajes', Color(0xFF1B2D38), Color(0xFF71B8DE),
+        Icons.flight_rounded),
+    'membresia': CategoriaEstilo('Membresía', Color(0xFF2A2E19),
+        Color(0xFFBAC66A), Icons.card_membership_rounded),
     'otros': CategoriaEstilo('Otros', Color(0xFF242A31), Color(0xFF9AA6B2),
         Icons.more_horiz_rounded),
   };

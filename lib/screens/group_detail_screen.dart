@@ -577,7 +577,10 @@ class FilaGasto extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 10),
         child: Row(
           children: [
-            CategoriaInsignia(categoria: gasto['category'], size: 42),
+            CategoriaInsignia(
+                categoria: gasto['category'],
+                emoji: gasto['category_icon'],
+                size: 42),
             const SizedBox(width: 13),
             Expanded(
               child: Column(
@@ -714,9 +717,7 @@ class _TodosLosGastosScreenState extends State<_TodosLosGastosScreen> {
   late Future<List<dynamic>> _futuro;
 
   // filtros (M4): la API filtra en servidor, la app solo los pide
-  static const _categorias = [
-    'comida', 'transporte', 'alojamiento', 'ocio', 'otros',
-  ];
+  static const _categorias = DividiTones.predefinidas;
   String? _categoria;
   DateTimeRange? _rango;
 
