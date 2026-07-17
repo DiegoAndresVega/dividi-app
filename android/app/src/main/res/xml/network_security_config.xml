@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Permite HTTP sin TLS únicamente hacia la VPS (la API aún no tiene dominio
+     ni certificado). El resto del tráfico sigue exigiendo HTTPS. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false" />
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">31.97.152.142</domain>
+    </domain-config>
+</network-security-config>

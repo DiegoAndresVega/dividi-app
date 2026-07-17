@@ -14,7 +14,9 @@ class ApiException implements Exception {
 }
 
 class ApiClient {
-  static const String baseUrl = 'https://dividi-api.onrender.com';
+  // VPS de Hostinger. HTTP plano hasta tener dominio con TLS; Android lo
+  // permite solo para este host vía network_security_config.xml.
+  static const String baseUrl = 'http://31.97.152.142:8000';
 
   final _storage = const FlutterSecureStorage();
 
