@@ -46,6 +46,9 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
   /// con el % / importe exacto / partes de cada uno.
   final Set<String> _selected = {};
   final Map<String, TextEditingController> _percentControllers = {};
+  // foco de cada campo de %: mientras se edita uno, no se recalcula solo
+  // (así se puede borrar la cifra por defecto sin que se rellene al instante)
+  final Map<String, FocusNode> _percentFocus = {};
   final Map<String, TextEditingController> _exactControllers = {};
   final Map<String, TextEditingController> _sharesControllers = {};
 
@@ -63,9 +66,11 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
   void initState() {
     super.initState();
     for (final member in _members) {
-      _percentControllers[member['id']] = TextEditingController();
-      _exactControllers[member['id']] = TextEditingController();
-      _sharesControllers[member['id']] = TextEditingController(text: '1');
+      final id = member['id'] as String;
+      _percentControllers[id] = TextEditingController();
+      _percentFocus[id] = FocusNode()..addListener(() => _onPercentFocusChange(id));
+      _exactControllers[id] = TextEditingController();
+      _sharesControllers[id] = TextEditingController(text: '1');
     }
 
     final expense = widget.expense;
@@ -116,11 +121,36 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
     _recomputeAutoPercentages();
   }
 
+  /// Id del campo de % que se está editando ahora mismo (con el foco), o null.
+  String? get _focusedPercentId {
+    for (final entry in _percentFocus.entries) {
+      if (entry.value.hasFocus) return entry.key;
+    }
+    return null;
+  }
+
+  /// Al perder el foco un campo vacío vuelve a ser automático (se recalcula);
+  /// mientras se edita se deja en paz para poder borrar y teclear a gusto.
+  void _onPercentFocusChange(String memberId) {
+    final focus = _percentFocus[memberId];
+    if (focus == null || focus.hasFocus) return;
+    if ((_percentControllers[memberId]?.text.trim() ?? '').isEmpty) {
+      setState(() {
+        _locked.remove(memberId);
+        _recomputeAutoPercentages();
+      });
+    }
+  }
+
   /// Reparte lo que falte hasta 100 entre los campos no fijados (automáticos).
   /// El último absorbe el resto del redondeo para que siempre sume 100 exacto.
+  /// Nunca escribe en el campo que se está editando (el que tiene el foco).
   void _recomputeAutoPercentages() {
     if (_splitMethod != 'percentage') return;
-    final autoIds = _selected.where((id) => !_locked.contains(id)).toList();
+    final focusedId = _focusedPercentId;
+    final autoIds = _selected
+        .where((id) => !_locked.contains(id) && id != focusedId)
+        .toList();
     if (autoIds.isEmpty) return;
 
     var lockedSum = 0.0;
@@ -165,6 +195,9 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
     _amountController.dispose();
     for (final controller in _percentControllers.values) {
       controller.dispose();
+    }
+    for (final node in _percentFocus.values) {
+      node.dispose();
     }
     for (final controller in _exactControllers.values) {
       controller.dispose();
@@ -258,9 +291,13 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
     );
     if (created == null || !mounted) return;
     setState(() {
+      final id = created['id'] as String;
       _members.add(created);
-      _percentControllers[created['id']] = TextEditingController();
-      _selected.add(created['id'] as String);
+      _percentControllers[id] = TextEditingController();
+      _percentFocus[id] = FocusNode()..addListener(() => _onPercentFocusChange(id));
+      _exactControllers[id] = TextEditingController();
+      _sharesControllers[id] = TextEditingController(text: '1');
+      _selected.add(id);
       _recomputeAutoPercentages();
     });
   }
@@ -516,6 +553,7 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
                     padding: const EdgeInsets.only(left: 48, bottom: 8),
                     child: TextField(
                       controller: _percentControllers[memberId],
+                      focusNode: _percentFocus[memberId],
                       decoration: InputDecoration(
                         labelText: 'Porcentaje (%)',
                         isDense: true,

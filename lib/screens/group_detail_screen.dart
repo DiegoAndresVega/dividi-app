@@ -56,7 +56,9 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
 
   Future<void> _refresh() async {
     final futuro = _cargar();
-    setState(() => _futuro = futuro);
+    setState(() {
+      _futuro = futuro;
+    });
     await futuro;
   }
 
@@ -736,7 +738,9 @@ class _TodosLosGastosScreenState extends State<_TodosLosGastosScreen> {
 
   Future<void> _refresh() async {
     final futuro = _pedirGastos();
-    setState(() => _futuro = futuro);
+    setState(() {
+      _futuro = futuro;
+    });
     await futuro;
   }
 

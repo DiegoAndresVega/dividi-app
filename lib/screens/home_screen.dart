@@ -4,11 +4,14 @@ import 'package:flutter/material.dart';
 
 import '../services/api_client.dart';
 import '../services/debt_reminder.dart';
+import '../services/notification_center.dart';
 import '../theme/dividi_format.dart';
 import '../theme/dividi_theme.dart';
 import '../widgets/dividi_bits.dart';
+import 'create_group_screen.dart';
 import 'group_detail_screen.dart';
 import 'login_screen.dart';
+import 'notifications_screen.dart';
 import 'profile_tab.dart';
 import 'savings_tab.dart';
 
@@ -26,7 +29,6 @@ class _HomeScreenState extends State<HomeScreen> {
   final _apiClient = ApiClient();
   late Future<_DatosInicio> _futuro;
   int _tab = 0;
-  bool _creatingGroup = false;
 
   @override
   void initState() {
@@ -43,6 +45,13 @@ class _HomeScreenState extends State<HomeScreen> {
     String nombreMe = '';
     try {
       nombreMe = ((await _apiClient.getMe())['name'] ?? '') as String;
+    } catch (_) {}
+    // novedades: contador para la campana + aviso local si hay algo nuevo
+    int noLeidas = 0;
+    try {
+      final notificaciones = await _apiClient.getNotifications();
+      noLeidas = notificaciones.where((n) => n['read_at'] == null).length;
+      unawaited(NotificationCenter.revisar(notificaciones));
     } catch (_) {}
     final grupos = await _apiClient.getGroups();
     final fichas = await Future.wait(grupos.map((grupo) async {
@@ -65,8 +74,8 @@ class _HomeScreenState extends State<HomeScreen> {
         userId: userId,
       );
     }));
-    final datos =
-        _DatosInicio(userId: userId, nombreMe: nombreMe, fichas: fichas);
+    final datos = _DatosInicio(
+        userId: userId, nombreMe: nombreMe, fichas: fichas, noLeidas: noLeidas);
     // recordatorio local de deudas (M10): se reprograma en cada carga
     unawaited(DebtReminder.actualizar(datos.saldoTotal));
     return datos;
@@ -74,7 +83,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _refresh() async {
     final futuro = _cargar();
-    setState(() => _futuro = futuro);
+    setState(() {
+      _futuro = futuro;
+    });
     await futuro;
   }
 
@@ -88,44 +99,17 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _createGroup() async {
-    // evita crear el grupo por duplicado si el usuario toca varias veces
-    // mientras la petición sigue en curso (p.ej. servidor despertando)
-    if (_creatingGroup) return;
-
-    final controller = TextEditingController();
-    final name = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Nuevo grupo'),
-        content: TextField(
-          controller: controller,
-          decoration: const InputDecoration(labelText: 'Nombre del grupo'),
-          autofocus: true,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancelar'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(controller.text.trim()),
-            child: const Text('Crear'),
-          ),
-        ],
-      ),
+    final creado = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => const CreateGroupScreen()),
     );
-    if (name == null || name.isEmpty) return;
+    if (creado == true && mounted) await _refresh();
+  }
 
-    setState(() => _creatingGroup = true);
-    try {
-      await _apiClient.createGroup(name: name);
-      await _refresh();
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
-    } finally {
-      if (mounted) setState(() => _creatingGroup = false);
-    }
+  Future<void> _abrirNovedades() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const NotificationsScreen()),
+    );
+    if (mounted) await _refresh();
   }
 
   Future<void> _abrirGrupo(_FichaGrupo ficha) async {
@@ -209,15 +193,9 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       floatingActionButton: _tab == 0
           ? FloatingActionButton(
-              onPressed: _creatingGroup ? null : _createGroup,
+              onPressed: _createGroup,
               tooltip: 'Nuevo grupo',
-              child: _creatingGroup
-                  ? const SizedBox(
-                      width: 22,
-                      height: 22,
-                      child: CircularProgressIndicator(strokeWidth: 2.5),
-                    )
-                  : const Icon(Icons.add_rounded, size: 28),
+              child: const Icon(Icons.add_rounded, size: 28),
             )
           : null,
     );
@@ -243,6 +221,15 @@ class _HomeScreenState extends State<HomeScreen> {
                   style: tema.textTheme.displaySmall,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              IconButton(
+                onPressed: _abrirNovedades,
+                tooltip: 'Novedades',
+                icon: Badge(
+                  isLabelVisible: datos.noLeidas > 0,
+                  label: Text('${datos.noLeidas}'),
+                  child: const Icon(Icons.notifications_none_rounded),
                 ),
               ),
               if (nombre.isNotEmpty) PersonaAvatar(nombre: nombre, size: 42),
@@ -477,11 +464,13 @@ class _DatosInicio {
   final String? userId;
   final String nombreMe;
   final List<_FichaGrupo> fichas;
+  final int noLeidas;
 
   const _DatosInicio({
     required this.userId,
     required this.nombreMe,
     required this.fichas,
+    required this.noLeidas,
   });
 
   String get nombreUsuario {

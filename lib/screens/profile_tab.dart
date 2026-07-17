@@ -5,6 +5,7 @@ import '../services/api_client.dart';
 import '../theme/dividi_format.dart';
 import '../theme/dividi_theme.dart';
 import '../widgets/dividi_bits.dart';
+import 'friends_screen.dart';
 
 /// Pestaña Perfil (M1 + M3): tu cuenta de verdad — nombre y contraseña
 /// editables — y tus invitaciones: Dividi es por invitación y cualquier
@@ -46,7 +47,9 @@ class _ProfileTabState extends State<ProfileTab> {
 
   Future<void> _refresh() async {
     final futuro = _cargar();
-    setState(() => _futuro = futuro);
+    setState(() {
+      _futuro = futuro;
+    });
     await futuro;
   }
 
@@ -312,6 +315,16 @@ class _ProfileTabState extends State<ProfileTab> {
                 title: const Text('Cambiar contraseña'),
                 trailing: const Icon(Icons.chevron_right_rounded),
                 onTap: _cambiarPassword,
+              ),
+              const Divider(height: 1),
+              ListTile(
+                leading: const Icon(Icons.group_outlined),
+                title: const Text('Amigos'),
+                subtitle: const Text('Añade amigos y móntalos en tus grupos'),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const FriendsScreen()),
+                ),
               ),
             ],
           ),

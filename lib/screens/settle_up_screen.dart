@@ -38,7 +38,9 @@ class _SettleUpScreenState extends State<SettleUpScreen> {
 
   Future<void> _refresh() async {
     final futuro = _cargar();
-    setState(() => _futuro = futuro);
+    setState(() {
+      _futuro = futuro;
+    });
     await futuro;
   }
 

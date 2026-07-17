@@ -1,26 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../services/api_client.dart';
-
-/// Reparto proporcional: el nuevo miembro recibe su %, y el resto escala
-/// para que todo siga sumando 100 (manteniendo sus proporciones relativas).
-Map<String, String> _proportionalRebalance(List<dynamic> members, double newPercentage) {
-  final factor = (100 - newPercentage) / 100;
-  final rebalance = <String, String>{};
-  var assigned = 0.0;
-  for (var i = 0; i < members.length; i++) {
-    final old = double.tryParse(members[i]['default_percentage'].toString()) ?? 0;
-    double value;
-    if (i == members.length - 1) {
-      value = 100 - newPercentage - assigned;
-    } else {
-      value = double.parse((old * factor).toStringAsFixed(2));
-      assigned += value;
-    }
-    rebalance[members[i]['id']] = value.toStringAsFixed(2);
-  }
-  return rebalance;
-}
+import 'member_rebalance.dart';
 
 /// Diálogo compartido para añadir un miembro al grupo, usado desde la pantalla
 /// de miembros y desde el formulario de gasto. Basta un nombre ("Persona 1",
@@ -113,7 +94,7 @@ Future<Map<String, dynamic>?> showAddMemberDialog({
       displayName: name.isEmpty ? null : name,
       email: email.isEmpty ? null : email,
       defaultPercentage: percentage.toStringAsFixed(2),
-      rebalance: _proportionalRebalance(members, percentage),
+      rebalance: proportionalRebalance(members, percentage),
     );
   } on ApiException catch (e) {
     if (context.mounted) showError(e.message);

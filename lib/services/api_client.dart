@@ -159,7 +159,8 @@ class ApiClient {
         case 'PUT':
           return http.put(uri, headers: headers, body: jsonEncode(body));
         case 'DELETE':
-          return http.delete(uri, headers: headers);
+          return http.delete(uri,
+              headers: headers, body: body == null ? null : jsonEncode(body));
         default:
           throw ArgumentError('Método no soportado: $method');
       }
@@ -217,13 +218,20 @@ class ApiClient {
     return jsonDecode(response.body) as List<dynamic>;
   }
 
+  /// Crea un grupo. Opcionalmente con invitados ya incluidos: `members` es una
+  /// lista de {display_name, default_percentage, email?} y `ownerPercentage`
+  /// el peso del creador (todo debe sumar 100 si hay invitados).
   Future<Map<String, dynamic>> createGroup({
     required String name,
     String defaultCurrency = 'EUR',
+    String? ownerPercentage,
+    List<Map<String, dynamic>>? members,
   }) async {
     final response = await _authorizedPost('/groups', {
       'name': name,
       'default_currency': defaultCurrency,
+      'owner_percentage': ?ownerPercentage,
+      'members': ?members,
     });
     if (response.statusCode != 201) {
       throw ApiException(_extractErrorMessage(response));
@@ -231,18 +239,21 @@ class ApiClient {
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
 
-  /// Añade un miembro al grupo: invitado sin cuenta (solo displayName) o por
-  /// email. `rebalance` reajusta los % del resto para que todo sume 100.
+  /// Añade un miembro al grupo: invitado sin cuenta (solo displayName), por
+  /// email, o un amigo por su cuenta (`friendUserId`). `rebalance` reajusta los
+  /// % del resto para que todo sume 100.
   Future<Map<String, dynamic>> addMember({
     required String groupId,
     String? displayName,
     String? email,
+    String? friendUserId,
     required String defaultPercentage,
     Map<String, String>? rebalance,
   }) async {
     final response = await _authorizedPost('/groups/$groupId/members', {
       'display_name': ?displayName,
       'email': ?email,
+      'user_id': ?friendUserId,
       'default_percentage': defaultPercentage,
       'rebalance': ?rebalance,
     });
@@ -250,6 +261,45 @@ class ApiClient {
       throw ApiException(_extractErrorMessage(response));
     }
     return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  /// Edita un miembro del grupo (nombre, rol o su peso). `rebalance` reajusta
+  /// a la vez los % del resto para que todo siga sumando 100.
+  Future<Map<String, dynamic>> updateMember({
+    required String groupId,
+    required String memberId,
+    String? displayName,
+    String? role,
+    String? defaultPercentage,
+    Map<String, String>? rebalance,
+  }) async {
+    final response =
+        await _authorizedPatch('/groups/$groupId/members/$memberId', {
+      'display_name': ?displayName,
+      'role': ?role,
+      'default_percentage': ?defaultPercentage,
+      'rebalance': ?rebalance,
+    });
+    if (response.statusCode != 200) {
+      throw ApiException(_extractErrorMessage(response));
+    }
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  /// Elimina un miembro del grupo. `rebalance` reparte su peso entre el resto.
+  Future<void> removeMember({
+    required String groupId,
+    required String memberId,
+    Map<String, String>? rebalance,
+  }) async {
+    final response = await _sendAuthorized(
+      'DELETE',
+      '/groups/$groupId/members/$memberId',
+      body: rebalance == null ? null : {'rebalance': rebalance},
+    );
+    if (response.statusCode != 204) {
+      throw ApiException(_extractErrorMessage(response));
+    }
   }
 
   Future<Map<String, dynamic>> getGroup(String groupId) async {
@@ -729,5 +779,90 @@ class ApiClient {
       throw ApiException(_extractErrorMessage(response));
     }
     return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  // ---------------------------------------------------------------- amigos
+
+  Future<List<dynamic>> getFriends() async {
+    final response = await _authorizedGet('/friends');
+    if (response.statusCode != 200) {
+      throw ApiException(_extractErrorMessage(response));
+    }
+    return jsonDecode(response.body) as List<dynamic>;
+  }
+
+  /// Solicitudes de amistad pendientes que has recibido.
+  Future<List<dynamic>> getFriendRequests() async {
+    final response = await _authorizedGet('/friends/requests');
+    if (response.statusCode != 200) {
+      throw ApiException(_extractErrorMessage(response));
+    }
+    return jsonDecode(response.body) as List<dynamic>;
+  }
+
+  /// Envía una solicitud de amistad por email. Devuelve 'pending' o, si esa
+  /// persona ya te la había enviado, 'accepted' (se acepta sola).
+  Future<String> sendFriendRequest(String email) async {
+    final response = await _authorizedPost('/friends/requests', {'email': email});
+    if (response.statusCode != 201) {
+      throw ApiException(_extractErrorMessage(response));
+    }
+    return (jsonDecode(response.body) as Map<String, dynamic>)['status'] as String;
+  }
+
+  Future<void> acceptFriendRequest(String requestId) async {
+    final response =
+        await _sendAuthorized('POST', '/friends/requests/$requestId/accept');
+    if (response.statusCode != 200) {
+      throw ApiException(_extractErrorMessage(response));
+    }
+  }
+
+  /// Rechaza (si la recibiste) o cancela (si la enviaste) una solicitud.
+  Future<void> declineFriendRequest(String requestId) async {
+    final response = await _authorizedDelete('/friends/requests/$requestId');
+    if (response.statusCode != 204) {
+      throw ApiException(_extractErrorMessage(response));
+    }
+  }
+
+  Future<void> removeFriend(String friendshipId) async {
+    final response = await _authorizedDelete('/friends/$friendshipId');
+    if (response.statusCode != 204) {
+      throw ApiException(_extractErrorMessage(response));
+    }
+  }
+
+  // --------------------------------------------------------- notificaciones
+
+  Future<List<dynamic>> getNotifications() async {
+    final response = await _authorizedGet('/notifications');
+    if (response.statusCode != 200) {
+      throw ApiException(_extractErrorMessage(response));
+    }
+    return jsonDecode(response.body) as List<dynamic>;
+  }
+
+  Future<int> getUnreadCount() async {
+    final response = await _authorizedGet('/notifications/unread-count');
+    if (response.statusCode != 200) {
+      throw ApiException(_extractErrorMessage(response));
+    }
+    return (jsonDecode(response.body) as Map<String, dynamic>)['unread'] as int;
+  }
+
+  Future<void> markAllNotificationsRead() async {
+    final response = await _sendAuthorized('POST', '/notifications/read-all');
+    if (response.statusCode != 204) {
+      throw ApiException(_extractErrorMessage(response));
+    }
+  }
+
+  Future<void> markNotificationRead(String notificationId) async {
+    final response =
+        await _sendAuthorized('POST', '/notifications/$notificationId/read');
+    if (response.statusCode != 204) {
+      throw ApiException(_extractErrorMessage(response));
+    }
   }
 }

@@ -36,7 +36,9 @@ class _RecurringScreenState extends State<RecurringScreen> {
 
   Future<void> _refresh() async {
     final futuro = _apiClient.getRecurring(widget.groupId);
-    setState(() => _futuro = futuro);
+    setState(() {
+      _futuro = futuro;
+    });
     await futuro;
   }
 
