@@ -5,7 +5,7 @@ import '../theme/dividi_theme.dart';
 import 'member_rebalance.dart';
 
 /// Editar un miembro del grupo (su nombre) o eliminarlo. Sirve tanto para
-/// invitados sin cuenta como para miembros con cuenta: el nombre que se cambia
+/// participantes personalizados como para miembros con cuenta: el nombre que se cambia
 /// es el que se muestra en este grupo.
 ///
 /// Los porcentajes se editan todos juntos en «Editar porcentajes», no aquí, para

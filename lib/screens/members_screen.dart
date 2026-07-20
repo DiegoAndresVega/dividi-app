@@ -11,9 +11,10 @@ import 'edit_percentages_screen.dart';
 
 /// Miembros del grupo: lista con porcentajes por defecto y añadir nuevos.
 ///
-/// Se puede añadir a alguien por email (si tiene o tendrá cuenta) o como
-/// invitado sin cuenta, solo con un nombre ("Persona 1", "Piso 2"...) — útil
-/// para llevar cuentas sin que todos estén registrados.
+/// Se puede añadir a un amigo por su cuenta, a alguien por email (si tiene o
+/// tendrá cuenta) o como participante personalizado, que solo existe dentro
+/// del grupo y es un nombre suelto ("Persona 1", "Piso 2"...) — útil para
+/// llevar cuentas sin que todos estén registrados.
 class MembersScreen extends StatefulWidget {
   final String groupId;
   final String groupName;
@@ -41,7 +42,7 @@ class _MembersScreenState extends State<MembersScreen> {
     });
   }
 
-  /// Menú de añadir: un invitado sin cuenta, o un amigo por su cuenta.
+  /// Menú de añadir: un participante personalizado, o un amigo por su cuenta.
   Future<void> _showAddSheet() async {
     if (_saving) return;
     final opcion = await showModalBottomSheet<String>(
@@ -52,8 +53,9 @@ class _MembersScreenState extends State<MembersScreen> {
           children: [
             ListTile(
               leading: const Icon(Icons.person_add_alt_1_rounded),
-              title: const Text('Añadir invitado'),
-              subtitle: const Text('Sin cuenta, solo un nombre: "Compi", "Piso 2"...'),
+              title: const Text('Participante personalizado'),
+              subtitle: const Text(
+                  'Sin cuenta, solo un nombre: "Compi", "Piso 2"...'),
               onTap: () => Navigator.of(context).pop('guest'),
             ),
             ListTile(
@@ -262,7 +264,7 @@ class _MembersScreenState extends State<MembersScreen> {
                     ? 'con cuenta'
                     : invitedEmail != null
                         ? 'invitado: $invitedEmail'
-                        : 'invitado sin cuenta';
+                        : 'participante personalizado';
                 final esAdmin = member['role'] == 'admin';
                 return Card(
                   clipBehavior: Clip.antiAlias,

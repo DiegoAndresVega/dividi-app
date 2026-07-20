@@ -29,11 +29,19 @@ class _SettleUpScreenState extends State<SettleUpScreen> {
   }
 
   Future<_DatosSaldar> _cargar() async {
-    final resultados = await Future.wait([
+    final resultados = await Future.wait<dynamic>([
       _apiClient.getSettleUp(widget.groupId),
       _apiClient.getBalances(widget.groupId),
+      _apiClient.getPayments(widget.groupId),
+      _apiClient.getGroup(widget.groupId),
     ]);
-    return _DatosSaldar(pagos: resultados[0], balances: resultados[1]);
+    final grupo = resultados[3] as Map<String, dynamic>;
+    return _DatosSaldar(
+      pagos: resultados[0] as List<dynamic>,
+      balances: resultados[1] as List<dynamic>,
+      registrados: resultados[2] as List<dynamic>,
+      miembros: (grupo['members'] as List<dynamic>?) ?? const [],
+    );
   }
 
   Future<void> _refresh() async {
@@ -91,6 +99,98 @@ class _SettleUpScreenState extends State<SettleUpScreen> {
     }
   }
 
+  /// Des-salda: borra un pago ya apuntado y la deuda vuelve a aparecer.
+  Future<void> _desSaldar(Map<String, dynamic> pago, _DatosSaldar datos) async {
+    final de = datos.nombreMiembro(pago['from_member_id'] as String?);
+    final para = datos.nombreMiembro(pago['to_member_id'] as String?);
+    final importe = formatearImporte(pago['amount']);
+
+    final confirmado = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Deshacer este pago'),
+        content: Text(
+          'Se borrará el pago de $importe de $de a $para y la deuda volverá a '
+          'aparecer en el grupo.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: TextButton.styleFrom(foregroundColor: DividiColors.rojo),
+            child: const Text('Deshacer'),
+          ),
+        ],
+      ),
+    );
+    if (confirmado != true || !mounted) return;
+
+    setState(() => _registrando = pago['id'] as String?);
+    try {
+      await _apiClient.deletePayment(
+        groupId: widget.groupId,
+        paymentId: pago['id'] as String,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Pago deshecho: $de → $para, $importe')),
+      );
+      await _refresh();
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+    } finally {
+      if (mounted) setState(() => _registrando = null);
+    }
+  }
+
+  /// Historial de pagos ya apuntados, cada uno con la opción de deshacerlo.
+  /// Se muestra también cuando el grupo está saldado: es justo cuando más
+  /// falta hace poder corregir un pago marcado por error.
+  Widget _historialPagos(_DatosSaldar datos) {
+    final tema = Theme.of(context);
+    if (datos.registrados.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 22),
+        const EtiquetaSeccion('Pagos apuntados'),
+        const SizedBox(height: 4),
+        Text(
+          'Si alguno se marcó por error, deshazlo y la deuda vuelve.',
+          style: tema.textTheme.bodySmall,
+        ),
+        const SizedBox(height: 10),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            child: Column(
+              children: [
+                for (final (indice, pago) in datos.registrados.indexed) ...[
+                  if (indice > 0) const Divider(),
+                  _FilaPagoApuntado(
+                    de: datos.nombreMiembro(pago['from_member_id'] as String?),
+                    para: datos.nombreMiembro(pago['to_member_id'] as String?),
+                    importe: formatearImporte(pago['amount']),
+                    fecha: fechaCorta(pago['paid_at'] as String?),
+                    ocupado: _registrando == pago['id'],
+                    deshabilitado: _registrando != null,
+                    onDeshacer: () =>
+                        _desSaldar(pago as Map<String, dynamic>, datos),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final tema = Theme.of(context);
@@ -125,12 +225,16 @@ class _SettleUpScreenState extends State<SettleUpScreen> {
             final pagos = datos.pagos;
 
             if (pagos.isEmpty) {
-              return ListView(children: const [
-                EstadoVacio(
-                  titulo: 'Todo saldado. A otra cosa. 🎉',
-                  detalle: 'No hay pagos pendientes en este grupo.',
-                ),
-              ]);
+              return ListView(
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 40),
+                children: [
+                  const EstadoVacio(
+                    titulo: 'Todo saldado. A otra cosa. 🎉',
+                    detalle: 'No hay pagos pendientes en este grupo.',
+                  ),
+                  _historialPagos(datos),
+                ],
+              );
             }
 
             return ListView(
@@ -207,6 +311,7 @@ class _SettleUpScreenState extends State<SettleUpScreen> {
                         style: tema.textTheme.titleMedium),
                   ],
                 ),
+                _historialPagos(datos),
               ],
             );
           },
@@ -290,6 +395,81 @@ class _FilaPago extends StatelessWidget {
                     child: CircularProgressIndicator(strokeWidth: 2.5))
                 : const Text('Registrar'),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Fila de pago ya apuntado: «De → Para», importe, fecha y botón de deshacer.
+class _FilaPagoApuntado extends StatelessWidget {
+  final String de;
+  final String para;
+  final String importe;
+  final String fecha;
+  final bool ocupado;
+  final bool deshabilitado;
+  final VoidCallback onDeshacer;
+
+  const _FilaPagoApuntado({
+    required this.de,
+    required this.para,
+    required this.importe,
+    required this.fecha,
+    required this.ocupado,
+    required this.deshabilitado,
+    required this.onDeshacer,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final tema = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 11),
+      child: Row(
+        children: [
+          PersonaAvatar(nombre: de, size: 30),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text.rich(
+                  TextSpan(children: [
+                    TextSpan(text: de),
+                    TextSpan(
+                      text: ' → ',
+                      style:
+                          TextStyle(color: tema.colorScheme.onSurfaceVariant),
+                    ),
+                    TextSpan(text: para),
+                  ]),
+                  style: tema.textTheme.bodyMedium
+                      ?.copyWith(fontWeight: FontWeight.w600),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                Text(
+                  '$importe · $fecha',
+                  style: tema.textTheme.bodySmall,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          if (ocupado)
+            const SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(strokeWidth: 2.5),
+            )
+          else
+            IconButton(
+              onPressed: deshabilitado ? null : onDeshacer,
+              icon: const Icon(Icons.undo_rounded),
+              color: DividiColors.rojo,
+              tooltip: 'Deshacer este pago',
+            ),
         ],
       ),
     );
@@ -486,10 +666,27 @@ class _Nodo {
 }
 
 class _DatosSaldar {
+  /// Sugerencias del settle-up (lo que hace falta pagar todavía).
   final List<dynamic> pagos;
   final List<dynamic> balances;
 
-  const _DatosSaldar({required this.pagos, required this.balances});
+  /// Pagos ya apuntados, para poder des-saldar si alguno se marcó por error.
+  final List<dynamic> registrados;
+  final List<dynamic> miembros;
+
+  const _DatosSaldar({
+    required this.pagos,
+    required this.balances,
+    required this.registrados,
+    required this.miembros,
+  });
+
+  String nombreMiembro(String? miembroId) {
+    for (final m in miembros) {
+      if (m['id'] == miembroId) return m['display_name'] as String;
+    }
+    return '—';
+  }
 
   /// Miembros con saldo distinto de cero (máx. 4), para el grafo.
   List<_Nodo> get nodos {

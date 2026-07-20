@@ -218,9 +218,10 @@ class ApiClient {
     return jsonDecode(response.body) as List<dynamic>;
   }
 
-  /// Crea un grupo. Opcionalmente con invitados ya incluidos: `members` es una
-  /// lista de {display_name, default_percentage, email?} y `ownerPercentage`
-  /// el peso del creador (todo debe sumar 100 si hay invitados).
+  /// Crea un grupo. Opcionalmente con participantes ya incluidos: `members` es
+  /// una lista de {display_name, default_percentage, email?, user_id?} — el
+  /// `user_id` es para meter de una vez a un amigo por su cuenta — y
+  /// `ownerPercentage` el peso del creador (todo debe sumar 100 si hay más).
   Future<Map<String, dynamic>> createGroup({
     required String name,
     String defaultCurrency = 'EUR',
@@ -239,9 +240,18 @@ class ApiClient {
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
 
-  /// Añade un miembro al grupo: invitado sin cuenta (solo displayName), por
-  /// email, o un amigo por su cuenta (`friendUserId`). `rebalance` reajusta los
-  /// % del resto para que todo sume 100.
+  /// Borra un grupo entero con todo lo que cuelga de él (gastos, pagos y
+  /// miembros). Solo un administrador del grupo puede hacerlo.
+  Future<void> deleteGroup(String groupId) async {
+    final response = await _authorizedDelete('/groups/$groupId');
+    if (response.statusCode != 204) {
+      throw ApiException(_extractErrorMessage(response));
+    }
+  }
+
+  /// Añade un miembro al grupo: participante personalizado sin cuenta (solo
+  /// displayName), por email, o un amigo por su cuenta (`friendUserId`).
+  /// `rebalance` reajusta los % del resto para que todo sume 100.
   Future<Map<String, dynamic>> addMember({
     required String groupId,
     String? displayName,
@@ -438,6 +448,19 @@ class ApiClient {
       throw ApiException(_extractErrorMessage(response));
     }
     return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  /// Des-salda: borra un pago registrado y el balance vuelve a como estaba
+  /// (el backend recalcula siempre desde los gastos y los pagos).
+  Future<void> deletePayment({
+    required String groupId,
+    required String paymentId,
+  }) async {
+    final response =
+        await _authorizedDelete('/groups/$groupId/payments/$paymentId');
+    if (response.statusCode != 204) {
+      throw ApiException(_extractErrorMessage(response));
+    }
   }
 
   // ---------------------------------------------------------------- perfil

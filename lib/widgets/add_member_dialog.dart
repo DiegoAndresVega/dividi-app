@@ -5,7 +5,7 @@ import 'member_rebalance.dart';
 
 /// Diálogo compartido para añadir un miembro al grupo, usado desde la pantalla
 /// de miembros y desde el formulario de gasto. Basta un nombre ("Persona 1",
-/// "Compi"...) para invitados sin cuenta; el email es opcional.
+/// "Compi"...) para un participante personalizado; el email es opcional.
 ///
 /// Devuelve el miembro creado, o null si se cancela o falla.
 Future<Map<String, dynamic>?> showAddMemberDialog({
@@ -23,7 +23,7 @@ Future<Map<String, dynamic>?> showAddMemberDialog({
   final confirmed = await showDialog<bool>(
     context: context,
     builder: (context) => AlertDialog(
-      title: const Text('Añadir miembro'),
+      title: const Text('Participante personalizado'),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,

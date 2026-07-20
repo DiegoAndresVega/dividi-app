@@ -143,6 +143,87 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
     }
   }
 
+  /// Borra el grupo entero. Si queda deuda viva el aviso es más serio y hay
+  /// que confirmar dos veces: un grupo con cuentas abiertas no se borra sin
+  /// querer, pero uno creado por error tampoco te deja atrapado.
+  Future<void> _borrarGrupo() async {
+    final datos = await _futuro;
+    if (!mounted) return;
+
+    if (!datos.soyAdmin) {
+      _aviso('Solo un administrador del grupo puede borrarlo');
+      return;
+    }
+
+    final divisa = datos.grupo['default_currency'] as String? ?? 'EUR';
+    final saldado = datos.estaSaldado;
+    final confirmado = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(saldado ? 'Borrar el grupo' : 'Este grupo tiene cuentas abiertas'),
+        content: Text(
+          saldado
+              ? 'Se borrarán «${widget.groupName}» y todo su historial de '
+                  'gastos y pagos. Esto no se puede deshacer.'
+              : 'Quedan ${formatearImporte(datos.deudaPendiente, divisa: divisa)} '
+                  'por saldar. Si lo borras, se perderán los gastos, los pagos '
+                  'y quién debe qué a quién. Esto no se puede deshacer.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: TextButton.styleFrom(foregroundColor: DividiColors.rojo),
+            child: Text(saldado ? 'Borrar' : 'Borrar de todas formas'),
+          ),
+        ],
+      ),
+    );
+    if (confirmado != true || !mounted) return;
+
+    // segunda confirmación solo cuando hay dinero en juego
+    if (!saldado) {
+      final seguro = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('¿Seguro?'),
+          content: Text(
+            'Última oportunidad: se borra «${widget.groupName}» con sus cuentas '
+            'sin saldar. Si solo quieres dejarlo, sal del grupo desde '
+            'Participantes.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('Mejor no'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              style: TextButton.styleFrom(foregroundColor: DividiColors.rojo),
+              child: const Text('Sí, borrar'),
+            ),
+          ],
+        ),
+      );
+      if (seguro != true || !mounted) return;
+    }
+
+    try {
+      await _apiClient.deleteGroup(widget.groupId);
+      if (!mounted) return;
+      Navigator.of(context).pop(true);
+    } on ApiException catch (e) {
+      if (mounted) _aviso(e.message);
+    }
+  }
+
+  void _aviso(String mensaje) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(mensaje)));
+  }
+
   Future<void> _abrirTique(Map<String, dynamic> gasto) async {
     final cambio = await mostrarTiqueSheet(
       context,
@@ -177,14 +258,23 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
           PopupMenuButton<String>(
             onSelected: (accion) => switch (accion) {
               'recurrentes' => _abrirRecurrentes(),
+              'borrar' => _borrarGrupo(),
               _ => _exportarCsv(),
             },
-            itemBuilder: (_) => const [
-              PopupMenuItem(
+            itemBuilder: (_) => [
+              const PopupMenuItem(
                 value: 'recurrentes',
                 child: Text('Gastos recurrentes'),
               ),
-              PopupMenuItem(value: 'exportar', child: Text('Exportar CSV')),
+              const PopupMenuItem(value: 'exportar', child: Text('Exportar CSV')),
+              const PopupMenuDivider(),
+              PopupMenuItem(
+                value: 'borrar',
+                child: Text(
+                  'Borrar grupo',
+                  style: TextStyle(color: DividiColors.rojo),
+                ),
+              ),
             ],
           ),
         ],
@@ -972,6 +1062,22 @@ class _DatosGrupo {
   }
 
   String? get miMiembroId => _miMiembro?['id'] as String?;
+
+  bool get soyAdmin => _miMiembro?['role'] == 'admin';
+
+  /// Lo que queda por saldar: la suma de los balances positivos. Es 0 cuando
+  /// el grupo está a cero (saldado o sin gastos) y sirve para avisar antes de
+  /// borrarlo.
+  double get deudaPendiente {
+    var pendiente = 0.0;
+    for (final b in balances) {
+      final valor = double.tryParse(b['balance'].toString()) ?? 0;
+      if (valor > 0) pendiente += valor;
+    }
+    return pendiente;
+  }
+
+  bool get estaSaldado => deudaPendiente < 0.01;
 
   String get subtitulo {
     final n = miembros.length;
