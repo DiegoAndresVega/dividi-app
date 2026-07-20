@@ -31,11 +31,11 @@ String formatearImporte(Object? valor, {String? divisa, bool conSigno = false}) 
 }
 
 /// Nombre en pantalla de cada método de división de la API.
-/// El método `percentage` se presenta como «según ingresos»: es la seña de
+/// El método `percentage` se presenta como «porcentajes»: es la seña de
 /// identidad de Dividi — cada uno aporta su peso en el hogar.
 const etiquetasMetodo = <String, String>{
   'equal': 'a partes iguales',
-  'percentage': 'según ingresos',
+  'percentage': 'porcentajes',
   'exact': 'importes exactos',
   'shares': 'por partes',
 };
@@ -45,7 +45,7 @@ String etiquetaMetodo(String? metodo) => etiquetasMetodo[metodo] ?? metodo ?? ''
 /// Versión corta para las líneas secundarias de las listas: «· iguales».
 const etiquetasMetodoCorto = <String, String>{
   'equal': 'iguales',
-  'percentage': 'según ingresos',
+  'percentage': 'porcentajes',
   'exact': 'exacto',
   'shares': 'por partes',
 };

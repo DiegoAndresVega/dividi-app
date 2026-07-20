@@ -240,7 +240,7 @@ class _MembersScreenState extends State<MembersScreen> {
                           'El porcentaje de cada persona es su peso en los '
                           'gastos comunes — por ejemplo, su parte de los '
                           'ingresos de la casa. Siempre suma 100, y los gastos '
-                          '«según ingresos» lo usan de serie: quien gana más '
+                          'por «porcentajes» lo usan de serie: quien gana más '
                           'aporta más, y a todos les cuesta el mismo esfuerzo.',
                           style: tema.textTheme.bodySmall,
                         ),

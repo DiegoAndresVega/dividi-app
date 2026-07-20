@@ -83,7 +83,7 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
     final expense = widget.expense;
     if (expense == null) {
       // por defecto: participan todos, paga el primero y el reparto es
-      // «según ingresos» — la seña de identidad de Dividi — precargando
+      // por «porcentajes» — la seña de identidad de Dividi — precargando
       // el peso de cada miembro en el hogar (sus % por defecto del grupo)
       _selected.addAll(_members.map((m) => m['id'] as String));
       _paidById = _members.isNotEmpty ? _members.first['id'] : null;
@@ -482,7 +482,7 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
           SegmentedButton<String>(
             showSelectedIcon: false,
             segments: const [
-              ButtonSegment(value: 'percentage', label: Text('Ingresos')),
+              ButtonSegment(value: 'percentage', label: Text('Porcentajes')),
               ButtonSegment(value: 'equal', label: Text('Iguales')),
               ButtonSegment(value: 'exact', label: Text('Exacto')),
               ButtonSegment(value: 'shares', label: Text('Partes')),

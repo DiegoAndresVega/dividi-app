@@ -209,7 +209,7 @@ class _RecurringScreenState extends State<RecurringScreen> {
 }
 
 /// Formulario de regla recurrente: qué, cuánto, quién paga, qué día
-/// y cómo se reparte (Ingresos o a partes iguales).
+/// y cómo se reparte (Porcentajes o a partes iguales).
 class _RecurringFormScreen extends StatefulWidget {
   final String groupId;
   final List<dynamic> miembros;
@@ -319,7 +319,7 @@ class _RecurringFormScreenState extends State<_RecurringFormScreen> {
             const SizedBox(height: 18),
             SegmentedButton<String>(
               segments: const [
-                ButtonSegment(value: 'percentage', label: Text('Ingresos')),
+                ButtonSegment(value: 'percentage', label: Text('Porcentajes')),
                 ButtonSegment(value: 'equal', label: Text('A partes iguales')),
               ],
               selected: {_metodo},
