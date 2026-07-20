@@ -23,13 +23,16 @@ void main() {
     // asegurar el modo porcentajes (segmento «Porcentajes», el de serie)
     await tester.tap(find.text('Porcentajes'));
     await tester.pumpAndSettle();
+    // el autocompletado viene apagado: se pone a mano para probarlo
+    await tester.tap(find.text('Completar automáticamente'));
+    await tester.pumpAndSettle();
   }
 
   /// Los campos de % son los TextField después de Descripción e Importe.
   List<TextField> percentFields(WidgetTester tester) =>
       tester.widgetList<TextField>(find.byType(TextField)).skip(2).toList();
 
-  testWidgets('Al activar porcentajes se reparten solos a partes iguales',
+  testWidgets('Con el autocompletado activo los % se reparten a partes iguales',
       (tester) async {
     await pumpForm(tester);
     final fields = percentFields(tester);
@@ -57,8 +60,11 @@ void main() {
     await pumpForm(tester);
     await tester.enterText(find.byType(TextField).at(2), '50');
     await tester.pumpAndSettle();
-    // borrar: vuelve todo al reparto igualitario
+    // borrar y salir del campo: un % vacío vuelve a ser automático al perder
+    // el foco, no mientras se teclea
     await tester.enterText(find.byType(TextField).at(2), '');
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(TextField).first);
     await tester.pumpAndSettle();
 
     final fields = percentFields(tester);
@@ -69,7 +75,9 @@ void main() {
   testWidgets('Desmarcar un participante reparte entre los que quedan',
       (tester) async {
     await pumpForm(tester);
-    await tester.tap(find.byType(CheckboxListTile).at(2)); // fuera Carlos
+    // por nombre, no por índice: el checkbox de autocompletar también es un
+    // CheckboxListTile y se pinta antes que los participantes
+    await tester.tap(find.widgetWithText(CheckboxListTile, 'Carlos'));
     await tester.pumpAndSettle();
 
     final fields = percentFields(tester);
