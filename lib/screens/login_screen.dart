@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../services/api_client.dart';
+import '../widgets/campo_contrasena.dart';
 import '../widgets/dividi_logo.dart';
 import 'home_screen.dart';
 import 'register_screen.dart';
@@ -78,10 +79,11 @@ class _LoginScreenState extends State<LoginScreen> {
                     decoration: const InputDecoration(labelText: 'Email'),
                   ),
                   const SizedBox(height: 16),
-                  TextField(
+                  CampoContrasena(
                     controller: _passwordController,
-                    obscureText: true,
-                    decoration: const InputDecoration(labelText: 'Contraseña'),
+                    label: 'Contraseña',
+                    textInputAction: TextInputAction.done,
+                    onSubmitted: _loading ? null : _submit,
                   ),
                   const SizedBox(height: 28),
                   FilledButton(

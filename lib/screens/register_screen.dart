@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../services/api_client.dart';
+import '../widgets/campo_contrasena.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -14,10 +15,41 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _nameController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _confirmController = TextEditingController();
   final _inviteCodeController = TextEditingController();
   bool _loading = false;
 
+  static const _minCaracteres = 8;
+
+  /// Error de la confirmación, en vivo. Callado mientras el campo esté vacío:
+  /// no se avisa de que no coincide antes de que dé tiempo a escribirla.
+  String? get _errorConfirmacion {
+    if (_confirmController.text.isEmpty) return null;
+    if (_confirmController.text != _passwordController.text) {
+      return 'Las dos contraseñas no coinciden';
+    }
+    return null;
+  }
+
+  String? _validar() {
+    if (_nameController.text.trim().isEmpty) return 'Pon tu nombre';
+    if (_emailController.text.trim().isEmpty) return 'Pon tu email';
+    if (_passwordController.text.length < _minCaracteres) {
+      return 'La contraseña necesita al menos $_minCaracteres caracteres';
+    }
+    if (_confirmController.text != _passwordController.text) {
+      return 'Las dos contraseñas no coinciden';
+    }
+    return null;
+  }
+
   Future<void> _submit() async {
+    final error = _validar();
+    if (error != null) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(error)));
+      return;
+    }
     setState(() => _loading = true);
     try {
       await _apiClient.register(
@@ -44,6 +76,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     _nameController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
+    _confirmController.dispose();
     _inviteCodeController.dispose();
     super.dispose();
   }
@@ -83,11 +116,19 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   decoration: const InputDecoration(labelText: 'Email'),
                 ),
                 const SizedBox(height: 16),
-                TextField(
+                CampoContrasena(
                   controller: _passwordController,
-                  obscureText: true,
-                  decoration: const InputDecoration(
-                      labelText: 'Contraseña (mín. 8 caracteres)'),
+                  label: 'Contraseña (mín. $_minCaracteres caracteres)',
+                  esNueva: true,
+                  onChanged: (_) => setState(() {}),
+                ),
+                const SizedBox(height: 16),
+                CampoContrasena(
+                  controller: _confirmController,
+                  label: 'Repite la contraseña',
+                  esNueva: true,
+                  errorText: _errorConfirmacion,
+                  onChanged: (_) => setState(() {}),
                 ),
                 const SizedBox(height: 16),
                 TextField(
