@@ -18,9 +18,9 @@ class ApiException implements Exception {
 }
 
 class ApiClient {
-  // VPS de Hostinger. HTTP plano hasta tener dominio con TLS; Android lo
-  // permite solo para este host vía network_security_config.xml.
-  static const String baseUrl = 'http://31.97.152.142:8000';
+  // API en la VPS de Hostinger, tras el proxy Caddy con certificado de
+  // Let's Encrypt. Solo HTTPS: la app tiene el cleartext prohibido.
+  static const String baseUrl = 'https://dividi.finkafest.es';
 
   /// Aviso de «la sesión ya no vale». La app lo engancha al arrancar para
   /// llevar al usuario a la pantalla de login en vez de dejarlo mirando una
