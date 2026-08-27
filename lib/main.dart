@@ -9,8 +9,32 @@ import 'services/api_client.dart';
 import 'theme/dividi_theme.dart';
 import 'widgets/dividi_logo.dart';
 
+/// Claves globales: permiten llevar al usuario al login y avisarle desde
+/// fuera del árbol de widgets, cuando el aviso llega de la capa de red.
+final navigatorKey = GlobalKey<NavigatorState>();
+final scaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
+
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  ApiClient.onSessionExpired = _volverAlLogin;
   runApp(const MyApp());
+}
+
+/// La sesión caducó (un año entero sin abrir la app): sacar al usuario al
+/// login desde donde esté, sin dejar pantallas viejas detrás, y explicar por
+/// qué en vez de mostrar errores sueltos.
+void _volverAlLogin() {
+  navigatorKey.currentState?.pushAndRemoveUntil(
+    MaterialPageRoute(builder: (_) => const LoginScreen()),
+    (route) => false,
+  );
+  scaffoldMessengerKey.currentState
+    ?..clearSnackBars()
+    ..showSnackBar(
+      const SnackBar(
+        content: Text('Tu sesión ha caducado. Vuelve a iniciar sesión.'),
+      ),
+    );
 }
 
 class MyApp extends StatelessWidget {
@@ -20,6 +44,8 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'dividi',
+      navigatorKey: navigatorKey,
+      scaffoldMessengerKey: scaffoldMessengerKey,
       theme: DividiTheme.claro(),
       darkTheme: DividiTheme.oscuro(),
       themeMode: ThemeMode.system,

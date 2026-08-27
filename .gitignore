@@ -33,6 +33,9 @@ migrate_working_dir/
 /build/
 /coverage/
 
+# APK generado en la raíz por build_apk.sh (binario pesado, nunca al repo)
+/*.apk
+
 # Symbolication related
 app.*.symbols
 

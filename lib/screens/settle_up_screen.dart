@@ -229,7 +229,7 @@ class _SettleUpScreenState extends State<SettleUpScreen> {
                 padding: const EdgeInsets.fromLTRB(20, 12, 20, 40),
                 children: [
                   const EstadoVacio(
-                    titulo: 'Todo saldado. A otra cosa. 🎉',
+                    titulo: 'Todo saldado',
                     detalle: 'No hay pagos pendientes en este grupo.',
                   ),
                   _historialPagos(datos),
@@ -307,7 +307,7 @@ class _SettleUpScreenState extends State<SettleUpScreen> {
                       style: tema.textTheme.bodySmall,
                     ),
                     const SizedBox(height: 4),
-                    Text('Todo saldado. A otra cosa. 🎉',
+                    Text('Todo saldado',
                         style: tema.textTheme.titleMedium),
                   ],
                 ),

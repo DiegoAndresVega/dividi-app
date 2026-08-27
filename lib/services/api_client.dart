@@ -5,6 +5,8 @@ import 'dart:io';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 
+import 'jwt.dart';
+
 /// Error de la API con el mensaje ya extraído de la respuesta de FastAPI
 /// (que viene en el campo `detail`, string o lista de errores de validación).
 class ApiException implements Exception {
@@ -20,6 +22,11 @@ class ApiClient {
   // permite solo para este host vía network_security_config.xml.
   static const String baseUrl = 'http://31.97.152.142:8000';
 
+  /// Aviso de «la sesión ya no vale». La app lo engancha al arrancar para
+  /// llevar al usuario a la pantalla de login en vez de dejarlo mirando una
+  /// pantalla llena de errores.
+  static void Function()? onSessionExpired;
+
   final _storage = const FlutterSecureStorage();
 
   Future<void> _saveTokens(String accessToken, String refreshToken) async {
@@ -29,7 +36,14 @@ class ApiClient {
 
   Future<String?> getAccessToken() => _storage.read(key: 'access_token');
 
-  Future<bool> isLoggedIn() async => (await getAccessToken()) != null;
+  /// Hay sesión mientras viva el refresh token: el access token caduca en
+  /// minutos y se renueva solo, así que no sirve para decidir esto.
+  Future<bool> isLoggedIn() async {
+    final refreshToken = await _storage.read(key: 'refresh_token');
+    if (refreshToken == null) return false;
+    return !tokenCaducado(refreshToken);
+  }
+
 
   /// Id del usuario con la sesión iniciada, leído del claim `sub` del JWT.
   /// Solo se decodifica el payload para mostrar datos propios en la interfaz;
@@ -37,16 +51,7 @@ class ApiClient {
   Future<String?> currentUserId() async {
     final token = await getAccessToken();
     if (token == null) return null;
-    try {
-      final parts = token.split('.');
-      if (parts.length != 3) return null;
-      final payload = jsonDecode(
-        utf8.decode(base64Url.decode(base64Url.normalize(parts[1]))),
-      ) as Map<String, dynamic>;
-      return payload['sub'] as String?;
-    } catch (_) {
-      return null;
-    }
+    return payloadDeJwt(token)?['sub'] as String?;
   }
 
   Future<void> logout() async {
@@ -188,8 +193,10 @@ class ApiClient {
       return true;
     }
     if (response.statusCode == 401) {
-      // el refresh token caducó de verdad: cerrar sesión local
+      // el refresh token caducó de verdad: cerrar sesión local y mandar al
+      // usuario al login, que es lo que espera de cualquier app
       await logout();
+      onSessionExpired?.call();
     }
     // errores transitorios (5xx, timeouts del despertar del servidor...)
     // no tocan la sesión: el siguiente intento volverá a probar
