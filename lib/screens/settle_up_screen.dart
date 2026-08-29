@@ -4,6 +4,7 @@ import '../services/api_client.dart';
 import '../theme/dividi_format.dart';
 import '../theme/dividi_theme.dart';
 import '../widgets/dividi_bits.dart';
+import '../widgets/saldar_dialog.dart';
 
 /// Saldar cuentas (lámina S4 del manual): la maraña de deudas frente a los
 /// pagos mínimos que sugiere el settle-up, con botón para registrar cada uno.
@@ -52,29 +53,19 @@ class _SettleUpScreenState extends State<SettleUpScreen> {
     await futuro;
   }
 
+  /// El diálogo decide cuánto se salda: la deuda entera o solo una parte.
   Future<void> _registrar(Map<String, dynamic> pago) async {
-    final de = pago['from_display_name'];
-    final para = pago['to_display_name'];
-    final importe = formatearImporte(pago['amount']);
+    final de = pago['from_display_name'] as String;
+    final para = pago['to_display_name'] as String;
+    final pendiente = double.tryParse(pago['amount'].toString()) ?? 0;
 
-    final confirmado = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Registrar pago'),
-        content: Text('$de le paga $importe a $para. ¿Lo apuntamos?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancelar'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Registrar'),
-          ),
-        ],
-      ),
+    final importe = await mostrarDialogoSaldar(
+      context,
+      de: de,
+      para: para,
+      pendiente: pendiente,
     );
-    if (confirmado != true || !mounted) return;
+    if (importe == null || !mounted) return;
 
     final clave = '${pago['from_member_id']}-${pago['to_member_id']}';
     setState(() => _registrando = clave);
@@ -83,12 +74,16 @@ class _SettleUpScreenState extends State<SettleUpScreen> {
         groupId: widget.groupId,
         fromMemberId: pago['from_member_id'],
         toMemberId: pago['to_member_id'],
-        amount: pago['amount'].toString(),
+        amount: importe,
         note: 'Saldado desde la app',
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Pago registrado: $de → $para, $importe')),
+        SnackBar(
+          content: Text(
+            'Pago registrado: $de → $para, ${formatearImporte(importe)}',
+          ),
+        ),
       );
       await _refresh();
     } on ApiException catch (e) {
