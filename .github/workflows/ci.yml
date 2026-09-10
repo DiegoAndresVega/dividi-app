@@ -13,7 +13,7 @@ jobs:
     name: Análisis y tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       # La version va fijada, no `channel: stable`. Los paquetes que vienen
       # atados al SDK (intl, meta, matcher, test_api, vector_math) cambian con
@@ -39,7 +39,7 @@ jobs:
     name: Revisión de dependencias
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       # La version va fijada, no `channel: stable`. Los paquetes que vienen
       # atados al SDK (intl, meta, matcher, test_api, vector_math) cambian con
@@ -70,7 +70,7 @@ jobs:
     # así que únicamente tiene sentido en un pull request.
     if: github.event_name == 'pull_request'
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       # Compara pubspec.lock antes y después del cambio contra la base de avisos
       # de GitHub, que sí cubre pub.dev. Es lo más parecido a pip-audit que hay
