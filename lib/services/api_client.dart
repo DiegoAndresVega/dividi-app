@@ -6,6 +6,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 
 import 'jwt.dart';
+import 'registro_seguro.dart';
 
 /// Error de la API con el mensaje ya extraído de la respuesta de FastAPI
 /// (que viene en el campo `detail`, string o lista de errores de validación).
@@ -91,7 +92,16 @@ class ApiClient {
     await _storage.delete(key: 'refresh_token');
   }
 
+  /// Mensaje de error listo para enseñar, ya enmascarado.
+  ///
+  /// El servidor no deberia devolver nunca un token dentro de un `detail`,
+  /// pero quien decide que se enseña al usuario es esta aplicacion: si algun
+  /// dia lo devuelve, no acaba en pantalla ni en una captura de la incidencia.
   String _extractErrorMessage(http.Response response) {
+    return enmascararSecretos(_detalleDeLaRespuesta(response));
+  }
+
+  String _detalleDeLaRespuesta(http.Response response) {
     try {
       final body = jsonDecode(response.body);
       final detail = body['detail'];
@@ -111,12 +121,15 @@ class ApiClient {
     try {
       return await peticion().timeout(const Duration(seconds: 20));
     } on TimeoutException {
+      trazarEnDepuracion('timeout de 20 s hablando con la API');
       throw ApiException(
           'El servidor tarda demasiado en responder. Inténtalo de nuevo en un momento.');
-    } on SocketException {
+    } on SocketException catch (error) {
+      trazarEnDepuracion('sin red hablando con la API: $error');
       throw ApiException(
           'Sin conexión con el servidor. Revisa tu internet e inténtalo de nuevo.');
-    } on http.ClientException {
+    } on http.ClientException catch (error) {
+      trazarEnDepuracion('fallo de cliente hablando con la API: $error');
       throw ApiException(
           'No se pudo conectar con el servidor. Revisa tu conexión e inténtalo de nuevo.');
     }

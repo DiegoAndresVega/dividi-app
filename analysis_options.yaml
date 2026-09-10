@@ -21,8 +21,20 @@ linter:
   # `// ignore_for_file: name_of_lint` syntax on the line or in the file
   # producing the lint.
   rules:
-    # avoid_print: false  # Uncomment to disable the `avoid_print` rule
-    # prefer_single_quotes: true  # Uncomment to enable the `prefer_single_quotes` rule
+    # Un print(response.body) puesto durante una depuracion deja el JWT en
+    # logcat, que en Android leen otras aplicaciones en dispositivos rooteados
+    # y que acaba entero en cualquier informe de fallo. flutter_lints ya trae
+    # esta regla, pero como `info`: se queda escrita aqui explicita para que
+    # nadie la quite sin darse cuenta de lo que quita.
+    avoid_print: true
+
+# `flutter analyze` ya devuelve error con cualquier aviso, pero un `info` es
+# facil de ignorar al leerlo. Subida a `error` para que no haya duda: quien
+# necesite trazar tiene lib/services/registro_seguro.dart, que solo escribe en
+# depuracion y enmascara antes de escribir.
+analyzer:
+  errors:
+    avoid_print: error
 
 # Additional information about this file can be found at
 # https://dart.dev/guides/language/analysis-options
