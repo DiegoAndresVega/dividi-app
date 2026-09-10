@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Copia de seguridad de Android (hasta API 30). Se excluye el fichero donde
+  flutter_secure_storage deja los tokens: la clave que los cifra vive en el
+  Keystore y no sale del dispositivo, así que la copia solo llevaría cifrado
+  que no se puede abrir. Restaurarla en otro móvil dejaría al usuario con una
+  sesión ilegible en vez de con la pantalla de login.
+-->
+<full-backup-content>
+    <exclude domain="sharedpref" path="FlutterSecureStorage.xml" />
+</full-backup-content>
