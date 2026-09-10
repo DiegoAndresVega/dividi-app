@@ -15,9 +15,15 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      # La version va fijada, no `channel: stable`. Los paquetes que vienen
+      # atados al SDK (intl, meta, matcher, test_api, vector_math) cambian con
+      # cada Flutter, asi que con el stable movil el lockfile deja de cuadrar
+      # sola y --enforce-lockfile falla sin que nadie haya tocado nada. Al
+      # subir de Flutter hay que subir esta linea y regenerar el lockfile en el
+      # mismo commit.
       - uses: subosito/flutter-action@v2
         with:
-          channel: stable
+          flutter-version: 3.44.4
           cache: true
 
       # --enforce-lockfile instala exactamente lo que dice pubspec.lock y falla
@@ -35,9 +41,15 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      # La version va fijada, no `channel: stable`. Los paquetes que vienen
+      # atados al SDK (intl, meta, matcher, test_api, vector_math) cambian con
+      # cada Flutter, asi que con el stable movil el lockfile deja de cuadrar
+      # sola y --enforce-lockfile falla sin que nadie haya tocado nada. Al
+      # subir de Flutter hay que subir esta linea y regenerar el lockfile en el
+      # mismo commit.
       - uses: subosito/flutter-action@v2
         with:
-          channel: stable
+          flutter-version: 3.44.4
           cache: true
 
       - run: flutter pub get --enforce-lockfile

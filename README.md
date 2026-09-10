@@ -26,6 +26,12 @@ que se sube a Play Store deja de ser la que se probó.
 
 - El CI instala con `flutter pub get --enforce-lockfile`, que falla si lo resuelto no
   coincide con el lockfile. Un `pubspec.lock` desactualizado se ve ahí y no en la release.
+- Por eso mismo el CI fija la **versión de Flutter** (`3.44.4`) en vez de usar el canal
+  `stable`. Los paquetes atados al SDK —`intl`, `meta`, `matcher`, `test_api`,
+  `vector_math`— cambian con cada Flutter, así que con un stable móvil el lockfile deja de
+  cuadrar solo y el CI se pone en rojo sin que nadie haya tocado nada. Al subir de Flutter
+  se sube esa línea de `.github/workflows/ci.yml` y se regenera el lockfile en el mismo
+  commit.
 - No se regenera a la ligera. Se toca cuando se actualiza una dependencia a propósito, y
   el commit que lo cambia lo dice.
 - Las actualizaciones llegan por Dependabot (`pub`, `gradle` y `github-actions`, semanal).
