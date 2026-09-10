@@ -63,7 +63,7 @@ jobs:
       # Compara pubspec.lock antes y después del cambio contra la base de avisos
       # de GitHub, que sí cubre pub.dev. Es lo más parecido a pip-audit que hay
       # para Dart, y es lo que cumple «revisar dependencias en cada pull request».
-      - uses: actions/dependency-review-action@v4
+      - uses: actions/dependency-review-action@v5
         with:
           fail-on-severity: high
           comment-summary-in-pr: on-failure
