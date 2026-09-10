@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  analisis-y-tests:
+    name: Análisis y tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      # --enforce-lockfile instala exactamente lo que dice pubspec.lock y falla
+      # si algo no cuadra. Sin esto, `pub get` puede resolver por su cuenta y el
+      # CI probaría versiones distintas de las que lleva la release.
+      - name: Instalar dependencias
+        run: flutter pub get --enforce-lockfile
+
+      - run: flutter analyze
+      - run: flutter test
+
+  dependencias:
+    name: Revisión de dependencias
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - run: flutter pub get --enforce-lockfile
+
+      # No hay `dart pub audit`: Dart no trae auditoría de vulnerabilidades.
+      # Lo que sí existe es el aviso de paquete descontinuado o retirado, que es
+      # la señal que de verdad importa aquí — un paquete sin mantenedor deja de
+      # recibir parches. Se deja informativo: un descontinuado no debe bloquear
+      # un cambio que no tiene nada que ver.
+      - name: Paquetes desactualizados o descontinuados
+        run: flutter pub outdated --show-all
+        continue-on-error: true
+
+  avisos-de-seguridad:
+    name: Avisos de seguridad
+    runs-on: ubuntu-latest
+    # dependency-review-action solo sabe comparar dos puntos de la historia,
+    # así que únicamente tiene sentido en un pull request.
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v5
+
+      # Compara pubspec.lock antes y después del cambio contra la base de avisos
+      # de GitHub, que sí cubre pub.dev. Es lo más parecido a pip-audit que hay
+      # para Dart, y es lo que cumple «revisar dependencias en cada pull request».
+      - uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high
+          comment-summary-in-pr: on-failure
