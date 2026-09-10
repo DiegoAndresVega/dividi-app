@@ -29,6 +29,12 @@ class ApiClient {
 
   final _storage = const FlutterSecureStorage();
 
+  /// El cliente HTTP se inyecta para poder probar el ciclo de sesión sin
+  /// tocar la red. En la aplicación real es el de siempre.
+  final http.Client _http;
+
+  ApiClient({http.Client? httpClient}) : _http = httpClient ?? http.Client();
+
   Future<void> _saveTokens(String accessToken, String refreshToken) async {
     await _storage.write(key: 'access_token', value: accessToken);
     await _storage.write(key: 'refresh_token', value: refreshToken);
@@ -54,7 +60,33 @@ class ApiClient {
     return payloadDeJwt(token)?['sub'] as String?;
   }
 
+  /// Cierra la sesión en el servidor y borra los tokens del dispositivo.
+  ///
+  /// Sin el aviso al servidor, el refresh token seguiría valiendo el ano que
+  /// dura aunque el usuario creyera haber salido. El borrado local va en un
+  /// `finally`: si la red falla, el usuario sale igual del dispositivo, que es
+  /// lo que ha pedido; lo que queda vivo en el servidor caduca por su cuenta.
   Future<void> logout() async {
+    final refreshToken = await _storage.read(key: 'refresh_token');
+    try {
+      if (refreshToken != null) {
+        await _pedir(() => _http.post(
+              Uri.parse('$baseUrl/auth/logout'),
+              headers: {'Content-Type': 'application/json'},
+              body: jsonEncode({'refresh_token': refreshToken}),
+            ));
+      }
+    } catch (_) {
+      // el servidor no contesta: da igual, la sesion local se cierra abajo
+    } finally {
+      await _borrarSesionLocal();
+    }
+  }
+
+  /// Borra los tokens sin hablar con el servidor. Es lo que toca cuando el
+  /// propio servidor acaba de decir que el refresh token ya no vale: llamar a
+  /// `/auth/logout` con el ya rechazado solo anadiria una peticion inutil.
+  Future<void> _borrarSesionLocal() async {
     await _storage.delete(key: 'access_token');
     await _storage.delete(key: 'refresh_token');
   }
@@ -96,7 +128,7 @@ class ApiClient {
     required String name,
     String? inviteCode,
   }) async {
-    final response = await _pedir(() => http.post(
+    final response = await _pedir(() => _http.post(
           Uri.parse('$baseUrl/auth/register'),
           headers: {'Content-Type': 'application/json'},
           body: jsonEncode({
@@ -116,7 +148,7 @@ class ApiClient {
   Future<void> login({required String email, required String password}) async {
     // FastAPI expone /auth/login con OAuth2PasswordRequestForm: espera
     // application/x-www-form-urlencoded, no JSON.
-    final response = await _pedir(() => http.post(
+    final response = await _pedir(() => _http.post(
           Uri.parse('$baseUrl/auth/login'),
           headers: {'Content-Type': 'application/x-www-form-urlencoded'},
           body: {'username': email, 'password': password},
@@ -156,15 +188,15 @@ class ApiClient {
     return _pedir(() {
       switch (method) {
         case 'GET':
-          return http.get(uri, headers: headers);
+          return _http.get(uri, headers: headers);
         case 'POST':
-          return http.post(uri, headers: headers, body: jsonEncode(body));
+          return _http.post(uri, headers: headers, body: jsonEncode(body));
         case 'PATCH':
-          return http.patch(uri, headers: headers, body: jsonEncode(body));
+          return _http.patch(uri, headers: headers, body: jsonEncode(body));
         case 'PUT':
-          return http.put(uri, headers: headers, body: jsonEncode(body));
+          return _http.put(uri, headers: headers, body: jsonEncode(body));
         case 'DELETE':
-          return http.delete(uri,
+          return _http.delete(uri,
               headers: headers, body: body == null ? null : jsonEncode(body));
         default:
           throw ArgumentError('Método no soportado: $method');
@@ -172,12 +204,28 @@ class ApiClient {
     });
   }
 
-  Future<bool> _tryRefreshTokens() async {
+  /// Refresco en curso, si lo hay.
+  ///
+  /// La app abre pantallas que lanzan varias peticiones a la vez, y todas se
+  /// topan con el mismo access token caducado. Sin esto, cada una gastaria el
+  /// refresh token por su cuenta y el servidor veria el mismo token repetido,
+  /// que es justo la senal de robo que le hace tumbar la sesion entera. Solo
+  /// se salva por el margen de gracia que tiene la API, y depender de una
+  /// ventana de segundos es fragil. Compartiendo el intento se gasta uno y
+  /// solo uno.
+  Future<bool>? _refrescoEnCurso;
+
+  Future<bool> _tryRefreshTokens() {
+    return _refrescoEnCurso ??=
+        _refrescar().whenComplete(() => _refrescoEnCurso = null);
+  }
+
+  Future<bool> _refrescar() async {
     final refreshToken = await _storage.read(key: 'refresh_token');
     if (refreshToken == null) return false;
     final http.Response response;
     try {
-      response = await _pedir(() => http.post(
+      response = await _pedir(() => _http.post(
             Uri.parse('$baseUrl/auth/refresh'),
             headers: {'Content-Type': 'application/json'},
             body: jsonEncode({'refresh_token': refreshToken}),
@@ -195,7 +243,7 @@ class ApiClient {
     if (response.statusCode == 401) {
       // el refresh token caducó de verdad: cerrar sesión local y mandar al
       // usuario al login, que es lo que espera de cualquier app
-      await logout();
+      await _borrarSesionLocal();
       onSessionExpired?.call();
     }
     // errores transitorios (5xx, timeouts del despertar del servidor...)
@@ -627,7 +675,7 @@ class ApiClient {
       final request = http.MultipartRequest('POST', uri)
         ..headers.addAll(await authHeaders())
         ..files.add(await http.MultipartFile.fromPath('file', filePath));
-      return http.Response.fromStream(await request.send());
+      return http.Response.fromStream(await _http.send(request));
     }
 
     var response = await _pedir(enviar);
