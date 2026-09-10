@@ -41,8 +41,8 @@ dependencies:
   # Cliente HTTP para hablar con la API de Dividi
   http: ^1.2.0
   # Almacenamiento cifrado en el dispositivo para el token JWT
-  flutter_secure_storage: ^9.2.2
-  share_plus: ^12.0.2
+  flutter_secure_storage: ^11.1.0
+  share_plus: ^13.3.0
   path_provider: ^2.1.6
   image_picker: ^1.2.3
   flutter_local_notifications: ^22.0.1
