@@ -30,6 +30,11 @@ class ApiClient {
 
   final _storage = const FlutterSecureStorage();
 
+  /// Dónde se recuerda el id que dijo el servidor, para no pedir `/me` en cada
+  /// pantalla. Se borra al entrar y al salir, que son los dos momentos en que
+  /// puede cambiar de quién es la sesión.
+  static const String _claveUsuarioId = 'user_id';
+
   /// El cliente HTTP se inyecta para poder probar el ciclo de sesión sin
   /// tocar la red. En la aplicación real es el de siempre.
   final http.Client _http;
@@ -52,13 +57,33 @@ class ApiClient {
   }
 
 
-  /// Id del usuario con la sesión iniciada, leído del claim `sub` del JWT.
-  /// Solo se decodifica el payload para mostrar datos propios en la interfaz;
-  /// la verificación real del token la hace siempre el servidor.
+  /// Id del usuario con la sesión iniciada, **según el servidor**.
+  ///
+  /// Antes salía del claim `sub` del token, que se lee sin verificar la firma.
+  /// Con ese id la app busca cuál de los miembros del grupo es el usuario, y de
+  /// ahí sale su rol: un `sub` cambiado a mano habría enseñado acciones de
+  /// administrador a quien no lo es. El servidor las rechazaría igual, pero la
+  /// interfaz no debe apoyarse en un dato que pone el propio teléfono.
+  ///
+  /// La respuesta de `/me` se guarda para no pedirla en cada pantalla.
   Future<String?> currentUserId() async {
+    final recordado = await _storage.read(key: _claveUsuarioId);
+    if (recordado != null) return recordado;
+
     final token = await getAccessToken();
     if (token == null) return null;
-    return payloadDeJwt(token)?['sub'] as String?;
+
+    try {
+      final yo = await getMe();
+      final id = yo['id'] as String?;
+      if (id != null) {
+        await _storage.write(key: _claveUsuarioId, value: id);
+      }
+      return id;
+    } on ApiException {
+      // sesión caída o servidor inalcanzable: quien llama ya trata el null
+      return null;
+    }
   }
 
   /// Cierra la sesión en el servidor y borra los tokens del dispositivo.
@@ -90,6 +115,7 @@ class ApiClient {
   Future<void> _borrarSesionLocal() async {
     await _storage.delete(key: 'access_token');
     await _storage.delete(key: 'refresh_token');
+    await _storage.delete(key: _claveUsuarioId);
   }
 
   /// Mensaje de error listo para enseñar, ya enmascarado.
@@ -170,6 +196,9 @@ class ApiClient {
       throw ApiException(_extractErrorMessage(response));
     }
     final body = jsonDecode(response.body) as Map<String, dynamic>;
+    // Puede entrar otra persona en el mismo teléfono: lo que se recordaba era
+    // de la sesión anterior.
+    await _storage.delete(key: _claveUsuarioId);
     await _saveTokens(body['access_token'], body['refresh_token']);
   }
 
