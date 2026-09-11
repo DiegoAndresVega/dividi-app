@@ -15,13 +15,13 @@ String tokenCon(Map<String, dynamic> claims) {
 int enSegundos(DateTime fecha) => fecha.millisecondsSinceEpoch ~/ 1000;
 
 void main() {
-  group('payloadDeJwt', () {
+  group('payloadSinVerificarDeJwt', () {
     test('devuelve los claims de un token bien formado', () {
       // Arrange
       final token = tokenCon({'sub': 'usuario-1', 'type': 'refresh'});
 
       // Act
-      final payload = payloadDeJwt(token);
+      final payload = payloadSinVerificarDeJwt(token);
 
       // Assert
       expect(payload?['sub'], 'usuario-1');
@@ -29,11 +29,11 @@ void main() {
     });
 
     test('devuelve null si el token no tiene tres partes', () {
-      expect(payloadDeJwt('esto-no-es-un-jwt'), isNull);
+      expect(payloadSinVerificarDeJwt('esto-no-es-un-jwt'), isNull);
     });
 
     test('devuelve null si el payload no es base64 válido', () {
-      expect(payloadDeJwt('cabecera.###.firma'), isNull);
+      expect(payloadSinVerificarDeJwt('cabecera.###.firma'), isNull);
     });
   });
 
