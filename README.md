@@ -63,3 +63,31 @@ y los repositorios son `google()`, `mavenCentral()` y `gradlePluginPortal()`. El
 lleva `distributionSha256Sum`, así que Gradle comprueba lo que se descarga en vez de
 ejecutar lo que le devuelva la URL. Al cambiar de versión hay que traer también su
 checksum.
+
+## Antes de publicar una release
+
+### Que el APK no lleve secretos
+
+Lo que va dentro del APK lo puede leer cualquiera que lo descargue: basta con
+descomprimirlo. La app no necesita ninguna credencial propia —solo conoce la URL pública de
+la API, y los tokens de sesión los recibe al entrar—, y hay que comprobar que siga así:
+
+```bash
+./build_apk.sh
+./comprobar_secretos_apk.sh
+```
+
+El script descomprime el APK de release y busca cualquier cosa con **forma de credencial**:
+un JWT, una clave privada, claves de Google, AWS, GitHub, Stripe o Slack, o una URL con
+usuario y contraseña. Mira el código Dart compilado, el de Android y los assets, y también el
+manifiesto y los recursos, que van compilados y en parte en UTF-16, así que un `grep` sobre
+el APK descomprimido no los ve: los decodifica con `aapt2` (Android SDK, build-tools). Sale
+con `0` si no encuentra nada, con `1` si encuentra algo y con `2` si no ha podido revisarlo
+entero.
+
+Además lista, para mirarlos a ojo, los textos que contienen `password`, `token`, `secret`,
+`api_key` o `bearer`, y las direcciones web del código Dart. Tienen que ser nombres de campo
+(`access_token`, `new_password`…) y la URL de la API, nunca un valor.
+
+Si algún día hace falta una clave de un servicio externo, no va en el código ni en un
+`--dart-define`: va en la API, que es la que habla con ese servicio.
