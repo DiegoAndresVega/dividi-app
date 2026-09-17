@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 
+import 'api_base_url.dart';
 import 'jwt.dart';
 import 'registro_seguro.dart';
 
@@ -19,9 +20,10 @@ class ApiException implements Exception {
 }
 
 class ApiClient {
-  // API en la VPS de Hostinger, tras el proxy Caddy con certificado de
-  // Let's Encrypt. Solo HTTPS: la app tiene el cleartext prohibido.
-  static const String baseUrl = 'https://dividi.finkafest.es';
+  // Sale de --dart-define=API_BASE_URL, con la de producción por defecto
+  // (ver api_base_url.dart). En una release sin esa variable: solo HTTPS, que
+  // es lo único que la app tiene permitido hablar.
+  static final String baseUrl = apiBaseUrl;
 
   /// Aviso de «la sesión ya no vale». La app lo engancha al arrancar para
   /// llevar al usuario a la pantalla de login en vez de dejarlo mirando una

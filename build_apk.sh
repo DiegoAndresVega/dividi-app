@@ -3,6 +3,10 @@
 # en vez de enterrado en build/app/outputs/flutter-apk/.
 #
 # Uso:  ./build_apk.sh
+#       API_BASE_URL=http://10.0.2.2:8000 ./build_apk.sh
+#
+# Sin API_BASE_URL sale la de producción, que es el valor por defecto del
+# código: olvidarse de la variable no puede dar un APK apuntando a pruebas.
 set -euo pipefail
 
 RAIZ="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -11,8 +15,15 @@ DESTINO="$RAIZ/dividi.apk"
 
 cd "$RAIZ"
 
-echo "==> Compilando APK de release…"
-flutter build apk --release
+API_BASE_URL="${API_BASE_URL:-}"
+
+if [[ -n "$API_BASE_URL" ]]; then
+  echo "==> Compilando APK de release contra $API_BASE_URL…"
+  flutter build apk --release --dart-define=API_BASE_URL="$API_BASE_URL"
+else
+  echo "==> Compilando APK de release contra producción…"
+  flutter build apk --release
+fi
 
 if [[ ! -f "$ORIGEN" ]]; then
   echo "ERROR: la compilación terminó pero no se encuentra el APK en:" >&2
@@ -26,3 +37,4 @@ echo
 echo "==> APK listo: $DESTINO"
 echo "    Tamaño: $(du -h "$DESTINO" | cut -f1)"
 echo "    Compilado: $(date '+%d/%m/%Y %H:%M')"
+echo "    API: ${API_BASE_URL:-https://dividi.finkafest.es (por defecto)}"
