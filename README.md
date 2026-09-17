@@ -64,6 +64,35 @@ lleva `distributionSha256Sum`, así que Gradle comprueba lo que se descarga en v
 ejecutar lo que le devuelva la URL. Al cambiar de versión hay que traer también su
 checksum.
 
+## Contra qué servidor habla la app
+
+Por defecto, contra producción: `https://dividi.finkafest.es`. La URL sale de
+`lib/services/api_base_url.dart`, que la lee de `--dart-define=API_BASE_URL` y cae en la de
+producción cuando no se pasa nada. Compilar contra otro servidor no exige tocar el código:
+
+```bash
+# desarrollo, con la API levantada en el mismo ordenador
+flutter run --dart-define=API_BASE_URL=http://10.0.2.2:8000
+
+# un APK de release apuntando a otro sitio (para probar, no para publicar)
+API_BASE_URL=https://pruebas.ejemplo.test ./build_apk.sh
+```
+
+`10.0.2.2` es la dirección con la que el emulador de Android ve el ordenador que lo aloja;
+`localhost` dentro del emulador es el propio emulador. En un móvil de verdad hay que usar la IP
+del ordenador en la red local.
+
+**El valor viaja dentro del binario.** `String.fromEnvironment` se resuelve al compilar, así que
+un APK ya construido no se puede reapuntar: hay que volver a compilarlo.
+
+**Aviso: la app tiene prohibido el tráfico sin cifrar.**
+`android/app/src/main/res/xml/network_security_config.xml` pone `cleartextTrafficPermitted`
+a `false` para todos los destinos, así que una API local en `http://` no responderá aunque la
+URL sea correcta: el fallo sale como error de red, no como error de configuración. Para
+desarrollo hay dos caminos: servir la API local por HTTPS, o añadir una excepción **solo para
+la variante de depuración**. Lo segundo es material del punto 24 de la revisión de seguridad,
+que sigue abierto.
+
 ## Antes de publicar una release
 
 ### Que el APK no lleve secretos
