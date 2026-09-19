@@ -95,6 +95,48 @@ que sigue abierto.
 
 ## Antes de publicar una release
 
+### Firma de release
+
+Android solo instala una actualización encima de la app si viene firmada con **la misma
+clave** que la versión instalada. Esa clave es la identidad de la app: quien la tenga puede
+publicar actualizaciones que el móvil aceptará como legítimas, y quien la pierda no podrá
+publicar ninguna más. Por eso vive **fuera del repositorio**, y Gradle la lee de
+`android/key.properties`, que Git ignora:
+
+```properties
+storeFile=/ruta/absoluta/a/dividi-release.jks
+storePassword=...
+keyAlias=dividi
+keyPassword=...
+```
+
+Sin ese fichero, `flutter build apk --release` sigue funcionando en cualquier clon, pero firma
+con la clave de depuración del ordenador. `build_apk.sh` no lo permite: se niega a compilar
+sin `key.properties` y, al terminar, comprueba con `comprobar_firma_apk.sh` que el APK lleva
+**exactamente** el certificado de release antes de dejarlo en la raíz. El mismo script sirve
+para revisar cualquier APK suelto:
+
+```bash
+./comprobar_firma_apk.sh dividi.apk
+```
+
+Compara la huella SHA-256 del certificado, que es pública (cualquiera la lee del APK):
+
+```
+3b8d4d0eb4a170940e49bdf22174f08b5c13934f3d20a8bf04f7583287db1b8c   CN=Dividi, O=DiegoAndresVega, C=ES
+```
+
+**Del keystore tiene que haber copia fuera de este ordenador**, y la contraseña guardada
+aparte. Si se pierde no hay forma de recuperarlo.
+
+**Las versiones anteriores a este cambio iban firmadas con la clave de depuración.** No se
+pueden actualizar a una firmada con la de release: hay que desinstalar la app e instalar la
+nueva una vez. Los datos viven en el servidor, así que solo se pierde la sesión.
+
+R8 (reducción y ofuscación del código Java y Kotlin) lo activa en release el plugin de
+Flutter. La ofuscación del código Dart (`--obfuscate`) no se usa: el código fuente es
+público, así que no esconde nada y solo complicaría leer las trazas de error.
+
 ### Que el APK no lleve secretos
 
 Lo que va dentro del APK lo puede leer cualquiera que lo descargue: basta con
